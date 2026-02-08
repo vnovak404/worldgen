@@ -15,6 +15,8 @@
     { id: "final", label: "Final", stage: 5, available: false }
   ];
   var ELEVATION_PARAMS = [
+    "num_macroplates",
+    "num_microplates",
     "boundary_noise",
     "blur_sigma",
     "mountain_scale",
@@ -65,9 +67,6 @@
         if (tab && !tab.classList.contains("disabled")) {
           this.setActiveLayer(tab.dataset.layer);
         }
-      });
-      document.getElementById("plates").addEventListener("input", (e) => {
-        document.getElementById("plates-val").textContent = e.target.value;
       });
       document.getElementById("fraction").addEventListener("input", (e) => {
         document.getElementById("fraction-val").textContent = parseFloat(
@@ -136,9 +135,6 @@
         document.getElementById("seed").value
       ) || 42;
       const [width, height] = document.getElementById("size").value.split("x").map(Number);
-      const num_plates = parseInt(
-        document.getElementById("plates").value
-      );
       const continental_fraction = parseFloat(
         document.getElementById("fraction").value
       );
@@ -146,7 +142,6 @@
         seed,
         width,
         height,
-        num_plates,
         continental_fraction
       };
       for (const id of ELEVATION_PARAMS) {

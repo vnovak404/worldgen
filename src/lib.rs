@@ -17,7 +17,10 @@ pub struct Map {
     pub height: Grid<f32>,
     pub plate_id: Grid<u16>,
     pub boundary_type: Grid<u8>,
+    pub boundary_major: Grid<u8>,
     pub boundary_dist: Grid<f32>,
+    pub macro_id: Vec<usize>,
+    pub num_macro: usize,
     pub rgba: Vec<u8>,
 }
 
@@ -30,15 +33,15 @@ pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Tim
     let mut timings = Vec::new();
     let total_start = Instant::now();
 
-    // 1. Seed plates
+    // 1. Seed microplates
     let t = Instant::now();
-    let seeds = plates::seed::poisson_plate_seeds(w, h, params.num_plates, seed);
+    let seeds = plates::seed::poisson_plate_seeds(w, h, params.num_microplates, seed);
     timings.push(Timing {
         name: "plate_seed",
         ms: t.elapsed().as_secs_f64() * 1000.0,
     });
 
-    // 2. Grow plates (noise-weighted Dijkstra)
+    // 2. Grow microplates (noise-weighted Dijkstra)
     let t = Instant::now();
     let plate_id = plates::grow::grow_plates(w, h, &seeds, seed, params.boundary_noise);
     timings.push(Timing {
@@ -46,10 +49,12 @@ pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Tim
         ms: t.elapsed().as_secs_f64() * 1000.0,
     });
 
-    // 3. Assign plate properties
+    // 3. Assign plate properties (macro grouping + velocities)
     let t = Instant::now();
     let plate_set = plates::properties::assign_plate_properties(
-        params.num_plates,
+        params.num_microplates,
+        params.num_macroplates,
+        &seeds,
         &plate_id,
         params.continental_fraction,
         seed,
@@ -59,9 +64,9 @@ pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Tim
         ms: t.elapsed().as_secs_f64() * 1000.0,
     });
 
-    // 4. Extract + classify boundaries
+    // 4. Extract + classify boundaries (major/minor)
     let t = Instant::now();
-    let (btype_grid, pa_grid, pb_grid) =
+    let (btype_grid, pa_grid, pb_grid, major_grid) =
         plates::boundary::extract_boundaries(&plate_id, &plate_set);
     timings.push(Timing {
         name: "boundaries",
@@ -88,6 +93,7 @@ pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Tim
         &near_by,
         &pa_grid,
         &pb_grid,
+        &major_grid,
         seed,
         params,
     );
@@ -116,7 +122,10 @@ pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Tim
         height,
         plate_id,
         boundary_type: btype_grid,
+        boundary_major: major_grid,
         boundary_dist: dist_grid,
+        macro_id: plate_set.macro_id,
+        num_macro: plate_set.num_macro,
         rgba,
     };
 

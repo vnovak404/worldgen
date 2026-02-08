@@ -15,7 +15,8 @@ struct GenerateRequest {
     seed: Option<u64>,
     width: Option<usize>,
     height: Option<usize>,
-    num_plates: Option<usize>,
+    num_macroplates: Option<usize>,
+    num_microplates: Option<usize>,
     continental_fraction: Option<f32>,
     boundary_noise: Option<f32>,
     // Elevation profile
@@ -67,10 +68,11 @@ async fn generate_handler(Json(req): Json<GenerateRequest>) -> Json<GenerateResp
     let seed = req.seed.unwrap_or(42);
     let width = req.width.unwrap_or(1024);
     let height = req.height.unwrap_or(512);
-    let num_plates = req.num_plates.unwrap_or(12);
-    let continental_fraction = req.continental_fraction.unwrap_or(0.40);
 
     let defaults = Params::default();
+    let num_macroplates = req.num_macroplates.unwrap_or(defaults.num_macroplates);
+    let num_microplates = req.num_microplates.unwrap_or(defaults.num_microplates);
+    let continental_fraction = req.continental_fraction.unwrap_or(defaults.continental_fraction);
     let boundary_noise = req.boundary_noise.unwrap_or(defaults.boundary_noise);
     let blur_sigma = req.blur_sigma.unwrap_or(defaults.blur_sigma);
     let mountain_scale = req.mountain_scale.unwrap_or(defaults.mountain_scale);
@@ -85,7 +87,8 @@ async fn generate_handler(Json(req): Json<GenerateRequest>) -> Json<GenerateResp
 
     let response = tokio::task::spawn_blocking(move || {
         let params = Params {
-            num_plates,
+            num_macroplates,
+            num_microplates,
             continental_fraction,
             boundary_noise,
             blur_sigma,
@@ -105,7 +108,13 @@ async fn generate_handler(Json(req): Json<GenerateRequest>) -> Json<GenerateResp
             Layer {
                 name: "plates".into(),
                 data_url: encode_png(
-                    &render::render_plates(&map.plate_id, &map.boundary_type, num_plates),
+                    &render::render_plates(
+                        &map.plate_id,
+                        &map.boundary_type,
+                        &map.boundary_major,
+                        &map.macro_id,
+                        map.num_macro,
+                    ),
                     width,
                     height,
                 ),
@@ -113,7 +122,7 @@ async fn generate_handler(Json(req): Json<GenerateRequest>) -> Json<GenerateResp
             Layer {
                 name: "boundaries".into(),
                 data_url: encode_png(
-                    &render::render_boundaries(&map.boundary_type),
+                    &render::render_boundaries(&map.boundary_type, &map.boundary_major),
                     width,
                     height,
                 ),

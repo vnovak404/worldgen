@@ -18,8 +18,8 @@ fn main() {
     let params = Params::default();
 
     eprintln!(
-        "Generating {}x{} map with seed={}, plates={}",
-        width, height, seed, params.num_plates
+        "Generating {}x{} map with seed={}, macro={}, micro={}",
+        width, height, seed, params.num_macroplates, params.num_microplates
     );
 
     let (map, timings) = worldgen::generate(seed, width, height, &params);
@@ -42,12 +42,14 @@ fn main() {
     let plate_rgba = render::render_plates(
         &map.plate_id,
         &map.boundary_type,
-        params.num_plates,
+        &map.boundary_major,
+        &map.macro_id,
+        map.num_macro,
     );
     save("plates.png", &plate_rgba, width, height);
 
     // 2. Boundary types
-    let bound_rgba = render::render_boundaries(&map.boundary_type);
+    let bound_rgba = render::render_boundaries(&map.boundary_type, &map.boundary_major);
     save("boundaries.png", &bound_rgba, width, height);
 
     // 3. Distance field

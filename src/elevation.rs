@@ -26,6 +26,7 @@ pub fn build_elevation(
     near_by: &Grid<u16>,
     pa_grid: &Grid<u16>,
     pb_grid: &Grid<u16>,
+    major_grid: &Grid<u8>,
     seed: u64,
     params: &Params,
 ) -> Grid<f32> {
@@ -57,7 +58,8 @@ pub fn build_elevation(
                 let pa = pa_grid.get(bx, by) as usize;
                 let pb = pb_grid.get(bx, by) as usize;
                 let rate = compute_rate(plates, pa, pb);
-                let (po, ma) = boundary_profile(btype, dist, rate, pid, pa, pb, plates, params);
+                let is_major = major_grid.get(bx, by) != 0;
+                let (po, ma) = boundary_profile(btype, dist, rate, pid, pa, pb, is_major, plates, params);
 
                 // Chain modulation: break uniform ridges into individual peaks
                 // by using anisotropic ridged noise oriented along the boundary.
@@ -240,6 +242,7 @@ fn boundary_profile(
     current_pid: usize,
     pa: usize,
     pb: usize,
+    is_major: bool,
     plates: &PlateSet,
     params: &Params,
 ) -> (f32, f32) {
@@ -247,6 +250,9 @@ fn boundary_profile(
     let ms = params.mountain_scale;
     let ts = params.trench_scale;
     let mw = params.mountain_width;
+
+    // Minor boundaries produce smaller features than major ones
+    let strength = if is_major { 1.0 } else { 0.35 };
 
     match btype {
         CONVERGENT => {
@@ -256,22 +262,22 @@ fn boundary_profile(
             match (pa_cont, pb_cont) {
                 (true, true) => {
                     // Continental-continental: symmetric mountain range (Himalayas/Alps)
-                    let peak = (3500.0 + rate_factor * 2000.0) * ms;
+                    let peak = (3500.0 + rate_factor * 2000.0) * ms * strength;
                     let offset = peak * gaussian(dist, mw);
-                    (offset, (400.0 + rate_factor * 200.0) * ms)
+                    (offset, (400.0 + rate_factor * 200.0) * ms * strength)
                 }
                 (true, false) | (false, true) => {
                     // Ocean-continent subduction (Andes pattern).
                     if plates.is_continental[current_pid] {
                         // Continental side: coastal mountains
-                        let peak = (3000.0 + rate_factor * 1800.0) * ms;
+                        let peak = (3000.0 + rate_factor * 1800.0) * ms * strength;
                         let sigma = mw * 0.8;
                         let offset_dist = (dist - 30.0).max(0.0);
                         let offset = peak * gaussian(offset_dist, sigma);
-                        (offset, (300.0 + rate_factor * 150.0) * ms)
+                        (offset, (300.0 + rate_factor * 150.0) * ms * strength)
                     } else {
                         // Oceanic side: deep trench
-                        let trench = -2500.0 * rate_factor.min(1.5) * ts;
+                        let trench = -2500.0 * rate_factor.min(1.5) * ts * strength;
                         let offset = trench * gaussian(dist, 12.0);
                         (offset, 0.0)
                     }
@@ -279,12 +285,12 @@ fn boundary_profile(
                 (false, false) => {
                     // Oceanic-oceanic: trench + island arc
                     if dist < 15.0 {
-                        let trench = -1800.0 * rate_factor.min(1.5) * ts;
+                        let trench = -1800.0 * rate_factor.min(1.5) * ts * strength;
                         (trench * gaussian(dist, 8.0), 0.0)
                     } else {
-                        let arc = 1000.0 * rate_factor.min(1.5) * ms;
+                        let arc = 1000.0 * rate_factor.min(1.5) * ms * strength;
                         let offset = arc * gaussian(dist - 35.0, 18.0);
-                        (offset, 150.0 * ms)
+                        (offset, 150.0 * ms * strength)
                     }
                 }
             }
@@ -294,11 +300,11 @@ fn boundary_profile(
 
             if both_oceanic {
                 // Mid-ocean ridge
-                let ridge_h = params.ridge_height * rate_factor.min(1.5);
+                let ridge_h = params.ridge_height * rate_factor.min(1.5) * strength;
                 (ridge_h * gaussian(dist, 35.0), 0.0)
             } else {
                 // Continental rift valley
-                let rift = -params.rift_depth * rate_factor.min(1.5);
+                let rift = -params.rift_depth * rate_factor.min(1.5) * strength;
                 (rift * gaussian(dist, 30.0), 0.0)
             }
         }

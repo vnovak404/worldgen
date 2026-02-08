@@ -78,19 +78,27 @@ pub fn render_map(height: &Grid<f32>) -> Vec<u8> {
     rgba
 }
 
-/// Diagnostic: render each plate as a random color, boundaries white.
-pub fn render_plates(plate_id: &Grid<u16>, btype: &Grid<u8>, num_plates: usize) -> Vec<u8> {
+/// Diagnostic: render plates colored by macroplate, boundaries distinguished.
+/// Major boundaries (between macroplates) = bright white.
+/// Minor boundaries (within macroplate) = dim gray.
+pub fn render_plates(
+    plate_id: &Grid<u16>,
+    btype: &Grid<u8>,
+    major: &Grid<u8>,
+    macro_id: &[usize],
+    num_macro: usize,
+) -> Vec<u8> {
     let w = plate_id.w;
     let h = plate_id.h;
 
-    // Generate a distinct color per plate
-    let colors: Vec<[u8; 4]> = (0..num_plates)
+    // Generate a distinct color per macroplate
+    let colors: Vec<[u8; 4]> = (0..num_macro)
         .map(|i| {
             let h = splitmix32(i as u32 * 7 + 123);
             [
-                (h & 0xFF) as u8 | 40,
-                ((h >> 8) & 0xFF) as u8 | 40,
-                ((h >> 16) & 0xFF) as u8 | 40,
+                (h & 0xFF) as u8 | 60,
+                ((h >> 8) & 0xFF) as u8 | 60,
+                ((h >> 16) & 0xFF) as u8 | 60,
                 255,
             ]
         })
@@ -101,11 +109,28 @@ pub fn render_plates(plate_id: &Grid<u16>, btype: &Grid<u8>, num_plates: usize) 
         for x in 0..w {
             let i = y * w + x;
             let color = if btype.data[i] != 0 {
-                [255, 255, 255, 255] // boundary = white
+                if major.data[i] != 0 {
+                    [255, 255, 255, 255] // major boundary = bright white
+                } else {
+                    [140, 140, 140, 255] // minor boundary = dim gray
+                }
             } else {
                 let pid = plate_id.data[i] as usize;
-                if pid < colors.len() {
-                    colors[pid]
+                if pid < macro_id.len() {
+                    let mid = macro_id[pid];
+                    if mid < colors.len() {
+                        // Slight shade variation per microplate within macroplate
+                        let shade = splitmix32(pid as u32 * 13 + 7);
+                        let offset = ((shade & 0x1F) as i16 - 16) as i32;
+                        [
+                            (colors[mid][0] as i32 + offset).clamp(0, 255) as u8,
+                            (colors[mid][1] as i32 + offset).clamp(0, 255) as u8,
+                            (colors[mid][2] as i32 + offset).clamp(0, 255) as u8,
+                            255,
+                        ]
+                    } else {
+                        [128, 128, 128, 255]
+                    }
                 } else {
                     [128, 128, 128, 255]
                 }
@@ -117,16 +142,18 @@ pub fn render_plates(plate_id: &Grid<u16>, btype: &Grid<u8>, num_plates: usize) 
 }
 
 /// Diagnostic: boundary types as colors.
-pub fn render_boundaries(btype: &Grid<u8>) -> Vec<u8> {
+/// Major boundaries = bright, minor = dim.
+pub fn render_boundaries(btype: &Grid<u8>, major: &Grid<u8>) -> Vec<u8> {
     let w = btype.w;
     let h = btype.h;
     let mut rgba = vec![0u8; w * h * 4];
     for i in 0..w * h {
+        let is_major = major.data[i] != 0;
         let color = match btype.data[i] {
-            CONVERGENT => [220, 50, 50, 255],  // red
-            DIVERGENT => [50, 80, 220, 255],    // blue
-            TRANSFORM => [50, 200, 80, 255],    // green
-            _ => [20, 20, 20, 255],             // dark = interior
+            CONVERGENT => if is_major { [220, 50, 50, 255] } else { [120, 40, 40, 255] },
+            DIVERGENT => if is_major { [50, 80, 220, 255] } else { [40, 50, 120, 255] },
+            TRANSFORM => if is_major { [50, 200, 80, 255] } else { [40, 100, 50, 255] },
+            _ => [20, 20, 20, 255],
         };
         rgba[i * 4..i * 4 + 4].copy_from_slice(&color);
     }

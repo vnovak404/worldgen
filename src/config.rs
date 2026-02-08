@@ -2,7 +2,8 @@
 #[derive(Clone, Debug)]
 pub struct Params {
     // Plate tectonics
-    pub num_plates: usize,
+    pub num_macroplates: usize,
+    pub num_microplates: usize,
     pub continental_fraction: f32,
     pub boundary_noise: f32,
 
@@ -26,13 +27,14 @@ pub struct Params {
 impl Default for Params {
     fn default() -> Self {
         Self {
-            num_plates: 12,
+            num_macroplates: 8,
+            num_microplates: 100,
             continental_fraction: 0.40,
             boundary_noise: 0.6,
-            blur_sigma: 12.0,
+            blur_sigma: 4.0,
             mountain_scale: 1.0,
             trench_scale: 1.0,
-            mountain_width: 50.0,
+            mountain_width: 8.0,
             coast_amp: 1.0,
             interior_amp: 1.0,
             detail_amp: 50.0,

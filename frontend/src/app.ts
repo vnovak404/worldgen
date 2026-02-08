@@ -38,6 +38,8 @@ const LAYERS: LayerDef[] = [
 
 // Elevation parameter IDs for binding sliders
 const ELEVATION_PARAMS = [
+  "num_macroplates",
+  "num_microplates",
   "boundary_noise",
   "blur_sigma",
   "mountain_scale",
@@ -97,12 +99,6 @@ class App {
       if (tab && !tab.classList.contains("disabled")) {
         this.setActiveLayer(tab.dataset.layer!);
       }
-    });
-
-    document.getElementById("plates")!.addEventListener("input", (e) => {
-      document.getElementById("plates-val")!.textContent = (
-        e.target as HTMLInputElement
-      ).value;
     });
 
     document.getElementById("fraction")!.addEventListener("input", (e) => {
@@ -193,9 +189,6 @@ class App {
     ).value
       .split("x")
       .map(Number);
-    const num_plates = parseInt(
-      (document.getElementById("plates") as HTMLInputElement).value
-    );
     const continental_fraction = parseFloat(
       (document.getElementById("fraction") as HTMLInputElement).value
     );
@@ -204,7 +197,6 @@ class App {
       seed,
       width,
       height,
-      num_plates,
       continental_fraction,
     };
 

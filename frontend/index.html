@@ -200,10 +200,16 @@ button.active { background: #2a3a5a; border-color: #4a5a7a; }
       </select>
     </div>
     <div class="separator"></div>
-    <div class="control-group">
+    <div class="control-group" title="Number of major tectonic plates (macroplates). These define the big continents and ocean basins.">
       <label>plates</label>
-      <input type="range" id="plates" min="4" max="30" value="12">
-      <span class="val" id="plates-val">12</span>
+      <input type="range" id="num_macroplates" min="3" max="15" value="8">
+      <span class="val" id="num_macroplates-val">8</span>
+    </div>
+    <div class="separator"></div>
+    <div class="control-group" title="Number of microplates. More = more fracturing, more internal mountain chains, more irregular coastlines. Each microplate belongs to a macroplate.">
+      <label>fracture</label>
+      <input type="range" id="num_microplates" min="15" max="400" value="100">
+      <span class="val" id="num_microplates-val">100</span>
     </div>
     <div class="separator"></div>
     <div class="control-group">
@@ -224,8 +230,8 @@ button.active { background: #2a3a5a; border-color: #4a5a7a; }
   <div class="controls elevation-controls" id="elevation-controls" style="display:none">
     <div class="control-group" title="Profile smoothing radius (px). Higher = smoother transitions between boundary zones, less artifacts. Lower = sharper but noisier boundaries.">
       <label>blur</label>
-      <input type="range" id="blur_sigma" min="1" max="30" step="1" value="12">
-      <span class="val" id="blur_sigma-val">12</span>
+      <input type="range" id="blur_sigma" min="1" max="30" step="1" value="4">
+      <span class="val" id="blur_sigma-val">4</span>
     </div>
     <div class="control-group" title="Scales all convergent mountain heights. 1.0 = default (~5500m Himalayas). Crank up for extreme peaks, lower for gentle hills.">
       <label>mountains</label>
@@ -239,8 +245,8 @@ button.active { background: #2a3a5a; border-color: #4a5a7a; }
     </div>
     <div class="control-group" title="Gaussian sigma of mountain profiles (px). 50 = default width. Higher = wider, gentler mountain belts. Lower = narrow, sharp ranges.">
       <label>mtn width</label>
-      <input type="range" id="mountain_width" min="10" max="150" step="5" value="50">
-      <span class="val" id="mountain_width-val">50</span>
+      <input type="range" id="mountain_width" min="5" max="80" step="1" value="8">
+      <span class="val" id="mountain_width-val">8</span>
     </div>
     <div class="separator"></div>
     <div class="control-group" title="Coastline noise amplitude. Adds bays, peninsulas, and wiggles to plate boundaries. 0 = coastlines follow plate edges exactly. Higher = more irregular.">
