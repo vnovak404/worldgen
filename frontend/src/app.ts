@@ -38,6 +38,7 @@ const LAYERS: LayerDef[] = [
 
 // Elevation parameter IDs for binding sliders
 const ELEVATION_PARAMS = [
+  "boundary_noise",
   "blur_sigma",
   "mountain_scale",
   "trench_scale",

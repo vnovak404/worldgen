@@ -17,6 +17,7 @@ struct GenerateRequest {
     height: Option<usize>,
     num_plates: Option<usize>,
     continental_fraction: Option<f32>,
+    boundary_noise: Option<f32>,
     // Elevation profile
     blur_sigma: Option<f32>,
     mountain_scale: Option<f32>,
@@ -70,6 +71,7 @@ async fn generate_handler(Json(req): Json<GenerateRequest>) -> Json<GenerateResp
     let continental_fraction = req.continental_fraction.unwrap_or(0.40);
 
     let defaults = Params::default();
+    let boundary_noise = req.boundary_noise.unwrap_or(defaults.boundary_noise);
     let blur_sigma = req.blur_sigma.unwrap_or(defaults.blur_sigma);
     let mountain_scale = req.mountain_scale.unwrap_or(defaults.mountain_scale);
     let trench_scale = req.trench_scale.unwrap_or(defaults.trench_scale);
@@ -85,6 +87,7 @@ async fn generate_handler(Json(req): Json<GenerateRequest>) -> Json<GenerateResp
         let params = Params {
             num_plates,
             continental_fraction,
+            boundary_noise,
             blur_sigma,
             mountain_scale,
             trench_scale,

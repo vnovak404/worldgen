@@ -4,6 +4,7 @@ pub struct Params {
     // Plate tectonics
     pub num_plates: usize,
     pub continental_fraction: f32,
+    pub boundary_noise: f32,
 
     // Elevation profile
     pub blur_sigma: f32,
@@ -27,6 +28,7 @@ impl Default for Params {
         Self {
             num_plates: 12,
             continental_fraction: 0.40,
+            boundary_noise: 0.6,
             blur_sigma: 12.0,
             mountain_scale: 1.0,
             trench_scale: 1.0,

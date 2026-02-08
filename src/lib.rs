@@ -38,9 +38,9 @@ pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Tim
         ms: t.elapsed().as_secs_f64() * 1000.0,
     });
 
-    // 2. Grow plates (randomized BFS)
+    // 2. Grow plates (noise-weighted Dijkstra)
     let t = Instant::now();
-    let plate_id = plates::grow::grow_plates(w, h, &seeds, seed);
+    let plate_id = plates::grow::grow_plates(w, h, &seeds, seed, params.boundary_noise);
     timings.push(Timing {
         name: "plate_grow",
         ms: t.elapsed().as_secs_f64() * 1000.0,

@@ -15,6 +15,7 @@
     { id: "final", label: "Final", stage: 5, available: false }
   ];
   var ELEVATION_PARAMS = [
+    "boundary_noise",
     "blur_sigma",
     "mountain_scale",
     "trench_scale",
