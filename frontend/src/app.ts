@@ -15,6 +15,11 @@ interface GenerateResponse {
   height: number;
 }
 
+interface RiversResponse {
+  layer: Layer;
+  timing: TimingEntry;
+}
+
 interface LayerDef {
   id: string;
   label: string;
@@ -28,15 +33,16 @@ const LAYERS: LayerDef[] = [
   { id: "distance", label: "Distance", stage: 1, available: true },
   { id: "heightmap", label: "Heightmap", stage: 1, available: true },
   { id: "map", label: "Map", stage: 1, available: true },
+  // Stage 2
+  { id: "temperature", label: "Temperature", stage: 2, available: true },
+  { id: "precipitation", label: "Precipitation", stage: 2, available: true },
+  { id: "rivers", label: "Rivers", stage: 2, available: true },
   // Future stages
-  { id: "erosion", label: "Erosion", stage: 2, available: false },
-  { id: "rivers", label: "Rivers", stage: 3, available: false },
-  { id: "climate", label: "Climate", stage: 4, available: false },
-  { id: "biomes", label: "Biomes", stage: 4, available: false },
-  { id: "final", label: "Final", stage: 5, available: false },
+  { id: "biomes", label: "Biomes", stage: 3, available: false },
+  { id: "final", label: "Final", stage: 4, available: false },
 ];
 
-// Elevation parameter IDs for binding sliders
+// All parameter IDs (sliders in the Tune panel)
 const ELEVATION_PARAMS = [
   "num_macroplates",
   "num_microplates",
@@ -51,16 +57,25 @@ const ELEVATION_PARAMS = [
   "shelf_width",
   "ridge_height",
   "rift_depth",
+  "rainfall_scale",
+  "river_threshold",
 ];
+
+// All saveable control IDs (includes top-bar controls)
+const ALL_CONTROLS = ["seed", "size", "fraction", ...ELEVATION_PARAMS];
+
+const STORAGE_KEY = "worldgen_params";
 
 class App {
   private activeLayer = "map";
   private layerData = new Map<string, string>();
   private generating = false;
+  private riversLoading = false;
 
   constructor() {
     this.buildTabs();
     this.bindEvents();
+    this.loadParams();
   }
 
   private buildTabs() {
@@ -115,7 +130,8 @@ class App {
           const val = (e.target as HTMLInputElement).value;
           const display = document.getElementById(`${id}-val`);
           if (display) {
-            display.textContent = parseFloat(val) % 1 === 0 ? val : parseFloat(val).toFixed(1);
+            const num = parseFloat(val);
+            display.textContent = num % 1 === 0 ? val : num < 0.1 ? num.toFixed(3) : num.toFixed(1);
           }
         });
       }
@@ -134,12 +150,49 @@ class App {
       }
     });
 
+    // Save/Load buttons
+    document.getElementById("btn-save")!.addEventListener("click", () => this.saveParams());
+    document.getElementById("btn-load")!.addEventListener("click", () => this.loadParams());
+
     // Keyboard shortcut: Enter to generate
     document.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !this.generating) {
         this.generate();
       }
     });
+  }
+
+  private saveParams() {
+    const params: Record<string, string> = {};
+    for (const id of ALL_CONTROLS) {
+      const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+      if (el) params[id] = el.value;
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
+    const status = document.getElementById("status")!;
+    status.textContent = "params saved";
+  }
+
+  private loadParams() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const params: Record<string, string> = JSON.parse(raw);
+      for (const [id, val] of Object.entries(params)) {
+        const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+        if (!el) continue;
+        el.value = val;
+        const display = document.getElementById(`${id}-val`);
+        if (display) {
+          const num = parseFloat(val);
+          if (id === "fraction") {
+            display.textContent = num.toFixed(2);
+          } else {
+            display.textContent = num % 1 === 0 ? val : num < 0.1 ? num.toFixed(3) : num.toFixed(1);
+          }
+        }
+      }
+    } catch {}
   }
 
   private setActiveLayer(id: string) {
@@ -157,6 +210,14 @@ class App {
     const img = document.getElementById("layer-image") as HTMLImageElement;
     const placeholder = document.getElementById("placeholder")!;
     const data = this.layerData.get(this.activeLayer);
+
+    if (this.activeLayer === "rivers" && this.riversLoading && !data) {
+      img.style.display = "none";
+      placeholder.style.display = "block";
+      placeholder.textContent = "computing rivers...";
+      return;
+    }
+
     if (data) {
       img.src = data;
       img.style.display = "block";
@@ -164,6 +225,19 @@ class App {
     } else {
       img.style.display = "none";
       placeholder.style.display = "block";
+      placeholder.textContent = "press Generate to start";
+    }
+  }
+
+  private updateRiversTab() {
+    const tab = document.querySelector('.tab[data-layer="rivers"]') as HTMLElement | null;
+    if (!tab) return;
+    if (this.riversLoading) {
+      tab.textContent = "Rivers...";
+      tab.classList.add("loading");
+    } else {
+      tab.textContent = "Rivers";
+      tab.classList.remove("loading");
     }
   }
 
@@ -171,15 +245,7 @@ class App {
     return parseFloat((document.getElementById(id) as HTMLInputElement).value);
   }
 
-  private async generate() {
-    if (this.generating) return;
-    this.generating = true;
-
-    const btn = document.getElementById("btn-generate") as HTMLButtonElement;
-    const status = document.getElementById("status")!;
-    btn.disabled = true;
-    status.textContent = "generating...";
-
+  private buildRequestBody(): Record<string, number> {
     const seed =
       parseInt(
         (document.getElementById("seed") as HTMLInputElement).value
@@ -200,46 +266,117 @@ class App {
       continental_fraction,
     };
 
-    // Include elevation params
     for (const id of ELEVATION_PARAMS) {
       body[id] = this.readSlider(id);
     }
 
+    return body;
+  }
+
+  private async generate() {
+    if (this.generating) return;
+    this.generating = true;
+
+    const btn = document.getElementById("btn-generate") as HTMLButtonElement;
+    const status = document.getElementById("status")!;
+    btn.disabled = true;
+    status.textContent = "generating...";
+
+    // Clear old rivers data and mark as loading
+    this.layerData.delete("rivers");
+    this.riversLoading = true;
+    this.updateRiversTab();
+
+    const body = this.buildRequestBody();
+
     try {
       const t0 = performance.now();
-      const res = await fetch("/api/generate", {
+
+      // Fire base generation request
+      const baseRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
 
-      if (!res.ok) {
-        throw new Error(`${res.status} ${res.statusText}`);
+      if (!baseRes.ok) {
+        throw new Error(`${baseRes.status} ${baseRes.statusText}`);
       }
 
-      const data: GenerateResponse = await res.json();
-      const roundtrip = performance.now() - t0;
+      const baseData: GenerateResponse = await baseRes.json();
+      const baseRoundtrip = performance.now() - t0;
 
-      // Store layer data
+      // Store base layer data immediately
       this.layerData.clear();
-      for (const layer of data.layers) {
+      for (const layer of baseData.layers) {
         this.layerData.set(layer.name, layer.data_url);
       }
 
       this.updateImage();
+      this.saveParams();
 
-      // Timings
-      const total = data.timings.find((t) => t.name === "TOTAL");
-      status.textContent = total
-        ? `done — ${total.ms.toFixed(0)}ms gen, ${roundtrip.toFixed(0)}ms total`
-        : "done";
+      // Show base timings
+      const baseTotal = baseData.timings.find((t) => t.name === "TOTAL");
+      status.textContent = baseTotal
+        ? `done — ${baseTotal.ms.toFixed(0)}ms gen, ${baseRoundtrip.toFixed(0)}ms total | rivers computing...`
+        : "done | rivers computing...";
 
-      this.updateTimings(data.timings);
-    } catch (err) {
-      status.textContent = `error: ${err}`;
-    } finally {
+      this.updateTimings(baseData.timings);
+
+      // Enable generate button immediately — user can interact while rivers compute
       btn.disabled = false;
       this.generating = false;
+
+      // Fire rivers request in background
+      this.fetchRivers(body, baseData.timings, performance.now());
+    } catch (err) {
+      status.textContent = `error: ${err}`;
+      btn.disabled = false;
+      this.generating = false;
+      this.riversLoading = false;
+      this.updateRiversTab();
+    }
+  }
+
+  private async fetchRivers(
+    _body: Record<string, number>,
+    baseTimings: TimingEntry[],
+    t0: number
+  ) {
+    const status = document.getElementById("status")!;
+    try {
+      const res = await fetch("/api/rivers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+
+      if (!res.ok) {
+        throw new Error(`rivers: ${res.status}`);
+      }
+
+      const data: RiversResponse | null = await res.json();
+      if (data) {
+        this.layerData.set(data.layer.name, data.layer.data_url);
+
+        // Update timings to include hydrology
+        const allTimings = [...baseTimings.filter(t => t.name !== "TOTAL"), data.timing];
+        const totalMs = allTimings.reduce((s, t) => s + t.ms, 0);
+        allTimings.push({ name: "TOTAL", ms: totalMs });
+
+        const roundtrip = performance.now() - t0;
+        status.textContent = `done — ${totalMs.toFixed(0)}ms gen, ${roundtrip.toFixed(0)}ms total`;
+        this.updateTimings(allTimings);
+      }
+    } catch (err) {
+      status.textContent += ` | rivers error: ${err}`;
+    } finally {
+      this.riversLoading = false;
+      this.updateRiversTab();
+      // If user is viewing rivers tab, update the image now
+      if (this.activeLayer === "rivers") {
+        this.updateImage();
+      }
     }
   }
 

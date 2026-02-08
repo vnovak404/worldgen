@@ -22,6 +22,10 @@ pub struct Params {
     pub shelf_width: f32,
     pub ridge_height: f32,
     pub rift_depth: f32,
+
+    // Climate / hydrology
+    pub rainfall_scale: f32,
+    pub river_threshold: f32,
 }
 
 impl Default for Params {
@@ -41,6 +45,8 @@ impl Default for Params {
             shelf_width: 50.0,
             ridge_height: 1500.0,
             rift_depth: 600.0,
+            rainfall_scale: 1.0,
+            river_threshold: 0.01,
         }
     }
 }

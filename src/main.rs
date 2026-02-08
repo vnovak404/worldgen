@@ -63,5 +63,17 @@ fn main() {
     // 5. Final rendered map
     save("map.png", &map.rgba, width, height);
 
+    // 6. Temperature
+    let temp_rgba = render::render_temperature(&map.temperature);
+    save("temperature.png", &temp_rgba, width, height);
+
+    // 7. Precipitation
+    let precip_rgba = render::render_precipitation(&map.precipitation);
+    save("precipitation.png", &precip_rgba, width, height);
+
+    // 8. Rivers
+    let river_rgba = render::render_rivers(&map.height, &map.river_flow);
+    save("rivers.png", &river_rgba, width, height);
+
     eprintln!("\nDone.");
 }

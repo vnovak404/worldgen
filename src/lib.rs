@@ -1,6 +1,8 @@
+pub mod climate;
 pub mod config;
 pub mod elevation;
 pub mod grid;
+pub mod hydrology;
 pub mod noise;
 pub mod plates;
 pub mod render;
@@ -22,6 +24,9 @@ pub struct Map {
     pub macro_id: Vec<usize>,
     pub num_macro: usize,
     pub rgba: Vec<u8>,
+    pub temperature: Grid<f32>,
+    pub precipitation: Grid<f32>,
+    pub river_flow: Grid<f32>,
 }
 
 pub struct Timing {
@@ -29,7 +34,8 @@ pub struct Timing {
     pub ms: f64,
 }
 
-pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Timing>) {
+/// Generate everything except hydrology (fast: ~2s at 2048x1024).
+pub fn generate_base(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Timing>) {
     let mut timings = Vec::new();
     let total_start = Instant::now();
 
@@ -118,6 +124,22 @@ pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Tim
         ms: t.elapsed().as_secs_f64() * 1000.0,
     });
 
+    // 8. Temperature
+    let t = Instant::now();
+    let temperature = climate::compute_temperature(&height, seed);
+    timings.push(Timing {
+        name: "temperature",
+        ms: t.elapsed().as_secs_f64() * 1000.0,
+    });
+
+    // 9. Precipitation
+    let t = Instant::now();
+    let precipitation = climate::compute_precipitation(&height, &temperature, seed, params);
+    timings.push(Timing {
+        name: "precipitation",
+        ms: t.elapsed().as_secs_f64() * 1000.0,
+    });
+
     let total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
     timings.push(Timing {
         name: "TOTAL",
@@ -135,7 +157,40 @@ pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Tim
         macro_id: plate_set.macro_id,
         num_macro: plate_set.num_macro,
         rgba,
+        temperature,
+        precipitation,
+        river_flow: Grid::new(w, h), // empty — computed separately
     };
+
+    (map, timings)
+}
+
+/// Compute hydrology (slow: ~12s at 2048x1024). Requires height + precipitation from base map.
+pub fn generate_rivers(map: &Map, seed: u64, params: &Params) -> (Grid<f32>, Timing) {
+    let t = Instant::now();
+    let river_flow = hydrology::compute_hydrology(&map.height, &map.precipitation, seed, params);
+    let timing = Timing {
+        name: "hydrology",
+        ms: t.elapsed().as_secs_f64() * 1000.0,
+    };
+    (river_flow, timing)
+}
+
+/// Full generate (used by CLI). Calls generate_base + generate_rivers.
+pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Timing>) {
+    let (mut map, mut timings) = generate_base(seed, w, h, params);
+
+    let (river_flow, hydro_timing) = generate_rivers(&map, seed, params);
+    map.river_flow = river_flow;
+
+    // Recalculate total to include hydrology
+    let base_total = timings.pop().unwrap(); // remove base TOTAL
+    let total_ms = base_total.ms + hydro_timing.ms;
+    timings.push(hydro_timing);
+    timings.push(Timing {
+        name: "TOTAL",
+        ms: total_ms,
+    });
 
     (map, timings)
 }
