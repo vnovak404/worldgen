@@ -195,8 +195,9 @@ button.active { background: #2a3a5a; border-color: #4a5a7a; }
       <label>size</label>
       <select id="size">
         <option value="512x256">512 x 256</option>
-        <option value="1024x512" selected>1024 x 512</option>
-        <option value="2048x1024">2048 x 1024</option>
+        <option value="1024x512">1024 x 512</option>
+        <option value="2048x1024" selected>2048 x 1024</option>
+        <option value="4096x2048">4096 x 2048</option>
       </select>
     </div>
     <div class="separator"></div>
@@ -208,14 +209,14 @@ button.active { background: #2a3a5a; border-color: #4a5a7a; }
     <div class="separator"></div>
     <div class="control-group" title="Number of microplates. More = more fracturing, more internal mountain chains, more irregular coastlines. Each microplate belongs to a macroplate.">
       <label>fracture</label>
-      <input type="range" id="num_microplates" min="15" max="600" value="100">
-      <span class="val" id="num_microplates-val">100</span>
+      <input type="range" id="num_microplates" min="15" max="600" value="600">
+      <span class="val" id="num_microplates-val">600</span>
     </div>
     <div class="separator"></div>
     <div class="control-group">
       <label>land</label>
-      <input type="range" id="fraction" min="0.15" max="0.70" step="0.01" value="0.40">
-      <span class="val" id="fraction-val">0.40</span>
+      <input type="range" id="fraction" min="0.15" max="0.70" step="0.01" value="0.54">
+      <span class="val" id="fraction-val">0.54</span>
     </div>
     <div class="separator"></div>
     <div class="control-group" title="Organic boundary irregularity. 0 = straight Voronoi edges (geometric). Higher = more wiggly, natural-looking plate boundaries with bays, peninsulas, and interlocking shapes.">
@@ -230,13 +231,13 @@ button.active { background: #2a3a5a; border-color: #4a5a7a; }
   <div class="controls elevation-controls" id="elevation-controls" style="display:none">
     <div class="control-group" title="Profile smoothing radius (px). Higher = smoother transitions between boundary zones, less artifacts. Lower = sharper but noisier boundaries.">
       <label>blur</label>
-      <input type="range" id="blur_sigma" min="1" max="30" step="1" value="4">
-      <span class="val" id="blur_sigma-val">4</span>
+      <input type="range" id="blur_sigma" min="1" max="30" step="1" value="3">
+      <span class="val" id="blur_sigma-val">3</span>
     </div>
     <div class="control-group" title="Scales all convergent mountain heights. 1.0 = default (~5500m Himalayas). Crank up for extreme peaks, lower for gentle hills.">
       <label>mountains</label>
-      <input type="range" id="mountain_scale" min="0" max="3" step="0.1" value="1.0">
-      <span class="val" id="mountain_scale-val">1.0</span>
+      <input type="range" id="mountain_scale" min="0" max="3" step="0.1" value="0.6">
+      <span class="val" id="mountain_scale-val">0.6</span>
     </div>
     <div class="control-group" title="Scales all oceanic trench depths. 1.0 = default (~2500m deep). Higher = deeper subduction trenches and darker ocean near boundaries.">
       <label>trenches</label>
@@ -245,8 +246,8 @@ button.active { background: #2a3a5a; border-color: #4a5a7a; }
     </div>
     <div class="control-group" title="Gaussian sigma of mountain profiles (px). 50 = default width. Higher = wider, gentler mountain belts. Lower = narrow, sharp ranges.">
       <label>mtn width</label>
-      <input type="range" id="mountain_width" min="5" max="80" step="1" value="8">
-      <span class="val" id="mountain_width-val">8</span>
+      <input type="range" id="mountain_width" min="5" max="80" step="1" value="5">
+      <span class="val" id="mountain_width-val">5</span>
     </div>
     <div class="separator"></div>
     <div class="control-group" title="Coastline noise amplitude. Adds bays, peninsulas, and wiggles to plate boundaries. 0 = coastlines follow plate edges exactly. Higher = more irregular.">
@@ -267,8 +268,8 @@ button.active { background: #2a3a5a; border-color: #4a5a7a; }
     <div class="separator"></div>
     <div class="control-group" title="Continental shelf width (px). The shallow-water zone around coastlines. Wider = more gradual coast-to-deep-ocean transition.">
       <label>shelf</label>
-      <input type="range" id="shelf_width" min="5" max="100" step="5" value="40">
-      <span class="val" id="shelf_width-val">40</span>
+      <input type="range" id="shelf_width" min="5" max="100" step="5" value="50">
+      <span class="val" id="shelf_width-val">50</span>
     </div>
     <div class="control-group" title="Mid-ocean ridge height (meters). Elevated seafloor where oceanic plates diverge. 0 = flat ocean floor. Higher = more prominent underwater ridges.">
       <label>ridges</label>

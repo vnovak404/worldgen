@@ -6,9 +6,9 @@ use crate::rng::splitmix32;
 
 // Color palette (adapted from mapper, tuned for meter-scale elevation)
 const WATER_DEEP: [u8; 4] = [18, 36, 70, 255];
-const WATER_MID: [u8; 4] = [38, 64, 102, 255];
-const WATER_SHALLOW: [u8; 4] = [56, 110, 150, 255];
-const COAST_SHALLOW: [u8; 4] = [92, 140, 170, 255];
+const WATER_MID: [u8; 4] = [32, 55, 92, 255];
+const WATER_SHALLOW: [u8; 4] = [38, 78, 120, 255];
+const COAST_SHALLOW: [u8; 4] = [52, 100, 145, 255];
 const LAND_LOW: [u8; 4] = [70, 130, 62, 255];
 const LAND_MID: [u8; 4] = [140, 180, 100, 255];
 const LAND_HIGH: [u8; 4] = [190, 170, 120, 255];

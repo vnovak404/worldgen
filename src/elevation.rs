@@ -18,6 +18,9 @@ const SALT_BASE: u64 = 0xBA5E_E1EF_DEAD_CAFE;
 /// Build the elevation field from plate properties and boundary distance fields.
 /// Elevation is driven by geology (plate boundaries), not noise.
 /// Noise is used only for texture and coastline irregularity.
+///
+/// All pixel-based parameters scale with resolution relative to 1024-wide reference,
+/// so the same slider values produce the same geographic features at any resolution.
 pub fn build_elevation(
     plate_id: &Grid<u16>,
     plates: &PlateSet,
@@ -34,6 +37,10 @@ pub fn build_elevation(
     let w = plate_id.w;
     let h = plate_id.h;
     let n = w * h;
+
+    // Resolution scale: all pixel-based params are authored for 2048-wide.
+    let scale = w as f32 / 2048.0;
+
     let detail_seed = seed_u32(seed, SALT_DETAIL);
     let ridge_seed = seed_u32(seed, SALT_RIDGE);
     let coast_seed = seed_u32(seed, SALT_COAST);
@@ -41,11 +48,16 @@ pub fn build_elevation(
     let interior_seed = seed_u32(seed, SALT_INTERIOR);
     let chain_seed = seed_u32(seed, SALT_CHAIN);
     let base_seed = seed_u32(seed, SALT_BASE);
-    let mw = params.mountain_width;
+
+    // Scale pixel-based params
+    let mw = params.mountain_width * scale;
+    let blur_sigma = params.blur_sigma * scale;
+    let shelf_width = params.shelf_width * scale;
+    let interior_dist = 80.0 * scale;
+    let coast_dist_max = 100.0 * scale;
+    let ridge_dist_max = 120.0 * scale;
 
     // Phase 1: Compute boundary profiles per cell (parallel).
-    // Uses pre-stored plate pair grids (pa/pb) for stable lookups —
-    // no fragile neighbor searching at runtime.
     let profiles: Vec<[f32; 2]> = (0..n)
         .into_par_iter()
         .map(|i| {
@@ -61,23 +73,17 @@ pub fn build_elevation(
                 let pb = pb_grid.get(bx, by) as usize;
                 let rate = compute_rate(plates, pa, pb);
                 let is_major = major_grid.get(bx, by) != 0;
-                let (po, ma) = boundary_profile(btype, dist, rate, pid, pa, pb, is_major, plates, params);
+                let (po, ma) = boundary_profile(btype, dist, rate, pid, pa, pb, is_major, plates, params, scale);
 
                 // Chain modulation: break uniform ridges into individual peaks
-                // by using anisotropic ridged noise oriented along the boundary.
-                // Without this, the Gaussian profile produces uniform blobs.
                 if (po.abs() > 50.0 || ma > 10.0) && dist < mw * 3.0 {
                     let dx = bx as f32 - x as f32;
                     let dy = by as f32 - y as f32;
                     let len = (dx * dx + dy * dy).sqrt().max(1.0);
-                    // Tangent direction (parallel to boundary)
                     let tx = -dy / len;
                     let ty = dx / len;
-                    // Project position onto boundary-aligned axes
                     let along = (x as f32 * tx + y as f32 * ty) / w as f32;
                     let across = (x as f32 * ty + y as f32 * (-tx)) / w as f32;
-                    // Ridged noise stretched along boundary: low freq along (broad peaks),
-                    // higher freq across (narrow ridges that follow the boundary)
                     let chain = ridged_fbm(
                         along * 6.0, across * 18.0,
                         chain_seed, 3, 1.0, 2.0, 0.5,
@@ -97,14 +103,13 @@ pub fn build_elevation(
     let mut mt_amp: Vec<f32> = profiles.iter().map(|p| p[1]).collect();
 
     // Phase 2: Smooth profiles to eliminate Voronoi ridge discontinuities.
-    blur_grid(&mut profile_off, w, h, params.blur_sigma);
-    blur_grid(&mut mt_amp, w, h, params.blur_sigma);
+    blur_grid(&mut profile_off, w, h, blur_sigma);
+    blur_grid(&mut mt_amp, w, h, blur_sigma);
 
     // Phase 3: Final elevation = base + smoothed profile + noise (parallel).
     let coast_amp = params.coast_amp;
     let interior_amp = params.interior_amp;
     let detail_amp = params.detail_amp;
-    let shelf_width = params.shelf_width;
 
     let mut height = Grid::<f32>::new(w, h);
     height
@@ -124,7 +129,7 @@ pub fn build_elevation(
                 let u = x as f32 / w as f32;
                 let v = y as f32 / h as f32;
 
-                // Domain warping: offset the noise sampling position for organic look
+                // Domain warping
                 let warp_x = fbm(u * 2.0, v * 2.0, warp_seed, 3, 2.0, 2.0, 0.5) * 0.06;
                 let warp_y =
                     fbm(u * 2.0 + 17.0, v * 2.0 + 31.0, warp_seed, 3, 2.0, 2.0, 0.5) * 0.06;
@@ -132,9 +137,6 @@ pub fn build_elevation(
                 let wv = v + warp_y;
 
                 // Per-pixel base elevation: noise field + coastal taper.
-                // Continental cells taper toward sea level near plate edges,
-                // creating lowland coasts naturally. Mountain profiles (added later)
-                // still produce cliffs at convergent boundaries (fjords, Andes).
                 let base_center = plates.base_elevation[pid];
                 let base_noise = fbm(wu, wv, base_seed, 4, 2.5, 2.0, 0.5);
                 let base = if is_continental {
@@ -144,18 +146,18 @@ pub fn build_elevation(
                     base_center + base_noise * 200.0
                 };
 
-                // Interior terrain variation (continental plates get more terrain)
+                // Interior terrain variation
                 let interior_noise = if is_continental {
-                    let interior_weight = smoothstep((dist / 80.0).min(1.0));
+                    let interior_weight = smoothstep((dist / interior_dist).min(1.0));
                     let terrain = fbm(wu, wv, interior_seed, 5, 4.0, 2.1, 0.5);
                     terrain * 350.0 * interior_amp * interior_weight
                 } else {
                     fbm(wu, wv, interior_seed, 3, 3.0, 2.0, 0.5) * 150.0 * interior_amp
                 };
 
-                // Coastline perturbation: multi-scale noise for irregular coastlines.
-                let coast_perturb = if dist < 100.0 {
-                    let weight = smoothstep(1.0 - (dist / 100.0).min(1.0));
+                // Coastline perturbation
+                let coast_perturb = if dist < coast_dist_max {
+                    let weight = smoothstep(1.0 - (dist / coast_dist_max).min(1.0));
                     let large = fbm(wu, wv, coast_seed, 3, 3.0, 2.0, 0.5) * 800.0;
                     let small = fbm(wu, wv, coast_seed.wrapping_add(100), 4, 15.0, 2.0, 0.5) * 300.0;
                     (large + small) * weight * coast_amp
@@ -166,8 +168,8 @@ pub fn build_elevation(
                 // Fine detail noise
                 let detail = fbm(wu, wv, detail_seed, 4, 10.0, 2.0, 0.5) * detail_amp;
 
-                // Ridge noise near convergent boundaries for mountain texture
-                let ridge = if mountain_amp > 0.0 && dist < 120.0 {
+                // Ridge noise near convergent boundaries
+                let ridge = if mountain_amp > 0.0 && dist < ridge_dist_max {
                     let rw1 = fbm(
                         wu * 3.0, wv * 3.0,
                         ridge_seed.wrapping_add(50), 3, 2.0, 2.0, 0.5,
@@ -178,7 +180,7 @@ pub fn build_elevation(
                     ) * 0.10;
                     let r = ridged_fbm(wu + rw1, wv + rw2, ridge_seed, 4, 6.0, 2.1, 0.45)
                         .clamp(0.0, 1.0);
-                    let falloff = smoothstep(1.0 - (dist / 120.0).min(1.0));
+                    let falloff = smoothstep(1.0 - (dist / ridge_dist_max).min(1.0));
                     r * mountain_amp * falloff
                 } else {
                     0.0
@@ -244,11 +246,7 @@ fn compute_rate(plates: &PlateSet, pid_a: usize, pid_b: usize) -> f32 {
 }
 
 /// Returns (elevation_offset, mountain_noise_amplitude) based on boundary type.
-///
-/// Side determination uses the current cell's plate type (continental vs oceanic)
-/// rather than which boundary cell is nearest. This eliminates the artifact where
-/// adjacent cells pointing to boundary cells on opposite sides of a plate edge
-/// would get wildly different profiles (e.g. +3000m mountains vs -2500m trench).
+/// All pixel-based distances are multiplied by `scale` for resolution independence.
 fn boundary_profile(
     btype: u8,
     dist: f32,
@@ -259,13 +257,13 @@ fn boundary_profile(
     is_major: bool,
     plates: &PlateSet,
     params: &Params,
+    scale: f32,
 ) -> (f32, f32) {
     let rate_factor = rate.min(2.0);
     let ms = params.mountain_scale;
     let ts = params.trench_scale;
-    let mw = params.mountain_width;
+    let mw = params.mountain_width * scale;
 
-    // Minor boundaries produce smaller features than major ones
     let strength = if is_major { 1.0 } else { 0.35 };
 
     match btype {
@@ -275,35 +273,30 @@ fn boundary_profile(
 
             match (pa_cont, pb_cont) {
                 (true, true) => {
-                    // Continental-continental: symmetric mountain range (Himalayas/Alps)
                     let peak = (3500.0 + rate_factor * 2000.0) * ms * strength;
                     let offset = peak * gaussian(dist, mw);
                     (offset, (400.0 + rate_factor * 200.0) * ms * strength)
                 }
                 (true, false) | (false, true) => {
-                    // Ocean-continent subduction (Andes pattern).
                     if plates.is_continental[current_pid] {
-                        // Continental side: coastal mountains
                         let peak = (3000.0 + rate_factor * 1800.0) * ms * strength;
                         let sigma = mw * 0.8;
-                        let offset_dist = (dist - 30.0).max(0.0);
+                        let offset_dist = (dist - 30.0 * scale).max(0.0);
                         let offset = peak * gaussian(offset_dist, sigma);
                         (offset, (300.0 + rate_factor * 150.0) * ms * strength)
                     } else {
-                        // Oceanic side: deep trench
                         let trench = -2500.0 * rate_factor.min(1.5) * ts * strength;
-                        let offset = trench * gaussian(dist, 12.0);
+                        let offset = trench * gaussian(dist, 12.0 * scale);
                         (offset, 0.0)
                     }
                 }
                 (false, false) => {
-                    // Oceanic-oceanic: trench + island arc
-                    if dist < 15.0 {
+                    if dist < 15.0 * scale {
                         let trench = -1800.0 * rate_factor.min(1.5) * ts * strength;
-                        (trench * gaussian(dist, 8.0), 0.0)
+                        (trench * gaussian(dist, 8.0 * scale), 0.0)
                     } else {
                         let arc = 1000.0 * rate_factor.min(1.5) * ms * strength;
-                        let offset = arc * gaussian(dist - 35.0, 18.0);
+                        let offset = arc * gaussian(dist - 35.0 * scale, 18.0 * scale);
                         (offset, 150.0 * ms * strength)
                     }
                 }
@@ -313,13 +306,11 @@ fn boundary_profile(
             let both_oceanic = !plates.is_continental[pa] && !plates.is_continental[pb];
 
             if both_oceanic {
-                // Mid-ocean ridge
                 let ridge_h = params.ridge_height * rate_factor.min(1.5) * strength;
-                (ridge_h * gaussian(dist, 35.0), 0.0)
+                (ridge_h * gaussian(dist, 35.0 * scale), 0.0)
             } else {
-                // Continental rift valley
                 let rift = -params.rift_depth * rate_factor.min(1.5) * strength;
-                (rift * gaussian(dist, 30.0), 0.0)
+                (rift * gaussian(dist, 30.0 * scale), 0.0)
             }
         }
         TRANSFORM => (0.0, 0.0),

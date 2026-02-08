@@ -28,17 +28,17 @@ impl Default for Params {
     fn default() -> Self {
         Self {
             num_macroplates: 8,
-            num_microplates: 100,
-            continental_fraction: 0.40,
+            num_microplates: 600,
+            continental_fraction: 0.54,
             boundary_noise: 2.0,
-            blur_sigma: 4.0,
-            mountain_scale: 1.0,
+            blur_sigma: 3.0,
+            mountain_scale: 0.6,
             trench_scale: 1.0,
-            mountain_width: 8.0,
+            mountain_width: 5.0,
             coast_amp: 1.0,
             interior_amp: 1.0,
             detail_amp: 50.0,
-            shelf_width: 40.0,
+            shelf_width: 50.0,
             ridge_height: 1500.0,
             rift_depth: 600.0,
         }
