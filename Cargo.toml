@@ -1,0 +1,18 @@
+[package]
+name = "worldgen"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rayon = "1.10"
+image = "0.25"
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tower-http = { version = "0.6", features = ["cors", "fs"] }
+base64 = "0.22"
+
+[profile.release]
+opt-level = 3
+lto = "thin"

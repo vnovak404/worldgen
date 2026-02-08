@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>worldgen</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  background: #0d0d14;
+  color: #b0b0c0;
+  min-height: 100vh;
+}
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+header {
+  padding: 10px 20px;
+  border-bottom: 1px solid #1e1e2e;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+header h1 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #d0d0e0;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.controls {
+  padding: 10px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  border-bottom: 1px solid #1e1e2e;
+  flex-shrink: 0;
+}
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.control-group label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #666;
+  min-width: 42px;
+}
+.control-group .val {
+  font-size: 11px;
+  color: #888;
+  min-width: 28px;
+  text-align: right;
+}
+input[type="number"], select {
+  background: #14141e;
+  border: 1px solid #2a2a3a;
+  color: #d0d0e0;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 12px;
+  width: 80px;
+}
+input[type="range"] {
+  width: 100px;
+  accent-color: #4466aa;
+  cursor: pointer;
+}
+button {
+  background: #1a1a2a;
+  border: 1px solid #2a2a44;
+  color: #c0c0d0;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  transition: background 0.15s;
+}
+button:hover { background: #24243a; }
+button:disabled { opacity: 0.4; cursor: default; }
+button.primary {
+  background: #2a3a6a;
+  border-color: #3a4a7a;
+  font-weight: 600;
+}
+button.primary:hover { background: #3a4a7a; }
+button.active { background: #2a3a5a; border-color: #4a5a7a; }
+.elevation-controls {
+  background: #0c0c16;
+  border-bottom-color: #1a1a2a;
+}
+.tab-bar {
+  padding: 6px 20px 0;
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid #1e1e2e;
+  flex-shrink: 0;
+}
+.tab {
+  padding: 5px 12px;
+  border-radius: 4px 4px 0 0;
+  font-size: 11px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tab:hover:not(.disabled) { color: #999; background: #12121c; }
+.tab.active {
+  color: #d0d0e0;
+  background: #12121c;
+  border-color: #2a2a3a;
+}
+.tab.disabled {
+  color: #333;
+  cursor: default;
+  font-style: italic;
+}
+.tab .stage-badge {
+  font-size: 8px;
+  color: #444;
+  margin-left: 3px;
+  vertical-align: super;
+}
+.viewport {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: #0a0a10;
+  overflow: auto;
+  position: relative;
+}
+.viewport img {
+  max-width: 100%;
+  max-height: 100%;
+  border: 1px solid #1a1a2a;
+  display: none;
+}
+.viewport .placeholder {
+  color: #2a2a3a;
+  font-size: 13px;
+}
+.status-bar {
+  padding: 6px 20px;
+  border-top: 1px solid #1e1e2e;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 10px;
+  color: #444;
+  flex-shrink: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.status-bar .status-text { color: #666; }
+.status-bar .timing {
+  color: #3a3a5a;
+}
+.status-bar .timing .timing-name { color: #555; }
+.status-bar .timing .timing-ms { color: #6688bb; }
+.separator {
+  width: 1px;
+  height: 16px;
+  background: #2a2a3a;
+  flex-shrink: 0;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>worldgen</h1>
+  </header>
+  <div class="controls">
+    <div class="control-group">
+      <label>seed</label>
+      <input type="number" id="seed" value="42" min="0" max="999999">
+      <button id="btn-random" title="Random seed">dice</button>
+    </div>
+    <div class="separator"></div>
+    <div class="control-group">
+      <label>size</label>
+      <select id="size">
+        <option value="512x256">512 x 256</option>
+        <option value="1024x512" selected>1024 x 512</option>
+        <option value="2048x1024">2048 x 1024</option>
+      </select>
+    </div>
+    <div class="separator"></div>
+    <div class="control-group">
+      <label>plates</label>
+      <input type="range" id="plates" min="4" max="30" value="12">
+      <span class="val" id="plates-val">12</span>
+    </div>
+    <div class="separator"></div>
+    <div class="control-group">
+      <label>land</label>
+      <input type="range" id="fraction" min="0.15" max="0.70" step="0.01" value="0.40">
+      <span class="val" id="fraction-val">0.40</span>
+    </div>
+    <div class="separator"></div>
+    <button id="btn-generate" class="primary">Generate</button>
+    <button id="btn-toggle-elevation" title="Toggle elevation controls">Tune</button>
+  </div>
+  <div class="controls elevation-controls" id="elevation-controls" style="display:none">
+    <div class="control-group" title="Profile smoothing radius (px). Higher = smoother transitions between boundary zones, less artifacts. Lower = sharper but noisier boundaries.">
+      <label>blur</label>
+      <input type="range" id="blur_sigma" min="1" max="30" step="1" value="12">
+      <span class="val" id="blur_sigma-val">12</span>
+    </div>
+    <div class="control-group" title="Scales all convergent mountain heights. 1.0 = default (~5500m Himalayas). Crank up for extreme peaks, lower for gentle hills.">
+      <label>mountains</label>
+      <input type="range" id="mountain_scale" min="0" max="3" step="0.1" value="1.0">
+      <span class="val" id="mountain_scale-val">1.0</span>
+    </div>
+    <div class="control-group" title="Scales all oceanic trench depths. 1.0 = default (~2500m deep). Higher = deeper subduction trenches and darker ocean near boundaries.">
+      <label>trenches</label>
+      <input type="range" id="trench_scale" min="0" max="3" step="0.1" value="1.0">
+      <span class="val" id="trench_scale-val">1.0</span>
+    </div>
+    <div class="control-group" title="Gaussian sigma of mountain profiles (px). 50 = default width. Higher = wider, gentler mountain belts. Lower = narrow, sharp ranges.">
+      <label>mtn width</label>
+      <input type="range" id="mountain_width" min="10" max="150" step="5" value="50">
+      <span class="val" id="mountain_width-val">50</span>
+    </div>
+    <div class="separator"></div>
+    <div class="control-group" title="Coastline noise amplitude. Adds bays, peninsulas, and wiggles to plate boundaries. 0 = coastlines follow plate edges exactly. Higher = more irregular.">
+      <label>coast</label>
+      <input type="range" id="coast_amp" min="0" max="3" step="0.1" value="1.0">
+      <span class="val" id="coast_amp-val">1.0</span>
+    </div>
+    <div class="control-group" title="Interior terrain variation. Adds hills, plateaus, and basins inside continents. 0 = flat interiors. Higher = more rugged continental terrain.">
+      <label>interior</label>
+      <input type="range" id="interior_amp" min="0" max="3" step="0.1" value="1.0">
+      <span class="val" id="interior_amp-val">1.0</span>
+    </div>
+    <div class="control-group" title="Fine-scale noise amplitude (meters). Adds small texture to all terrain. 0 = smooth surfaces. Higher = grittier, more detailed terrain.">
+      <label>detail</label>
+      <input type="range" id="detail_amp" min="0" max="200" step="5" value="50">
+      <span class="val" id="detail_amp-val">50</span>
+    </div>
+    <div class="separator"></div>
+    <div class="control-group" title="Continental shelf width (px). The shallow-water zone around coastlines. Wider = more gradual coast-to-deep-ocean transition.">
+      <label>shelf</label>
+      <input type="range" id="shelf_width" min="5" max="100" step="5" value="40">
+      <span class="val" id="shelf_width-val">40</span>
+    </div>
+    <div class="control-group" title="Mid-ocean ridge height (meters). Elevated seafloor where oceanic plates diverge. 0 = flat ocean floor. Higher = more prominent underwater ridges.">
+      <label>ridges</label>
+      <input type="range" id="ridge_height" min="0" max="3000" step="100" value="1500">
+      <span class="val" id="ridge_height-val">1500</span>
+    </div>
+    <div class="control-group" title="Continental rift valley depth (meters). Depression where continental plates pull apart. 0 = no rifts. Higher = deeper rift valleys (like the East African Rift).">
+      <label>rifts</label>
+      <input type="range" id="rift_depth" min="0" max="1500" step="50" value="600">
+      <span class="val" id="rift_depth-val">600</span>
+    </div>
+  </div>
+  <div class="tab-bar" id="tab-bar"></div>
+  <div class="viewport">
+    <img id="layer-image" alt="layer">
+    <div class="placeholder" id="placeholder">press Generate to start</div>
+  </div>
+  <div class="status-bar">
+    <span class="status-text" id="status">idle</span>
+    <div id="timings"></div>
+  </div>
+</div>
+<script src="dist/app.js"></script>
+</body>
+</html>
