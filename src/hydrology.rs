@@ -168,9 +168,12 @@ fn priority_flood(elev: &mut Grid<f32>) {
             if visited[ni] { continue; }
             visited[ni] = true;
 
-            // Fill depression: raise neighbor to at least current cell's elevation
+            // Fill depression: raise neighbor to at least current cell's elevation.
+            // Add tiny epsilon so filled areas slope toward their outlet —
+            // without this, D8 can't find a downhill direction on flat filled areas
+            // and rivers dead-end inland.
             if elev.data[ni] < cell.elev {
-                elev.data[ni] = cell.elev;
+                elev.data[ni] = cell.elev + 1e-5;
             }
             heap.push(FloodEntry { elev: elev.data[ni], idx: ni as u32 });
         }
@@ -304,8 +307,9 @@ fn downsample_max(flow: &[f32], hi_w: usize, hi_h: usize, scale: usize) -> Grid<
 }
 
 /// Main hydrology pipeline. Returns base-resolution river_flow grid.
+/// Also carves valleys into the provided heightmap along river paths.
 pub fn compute_hydrology(
-    height: &Grid<f32>,
+    height: &mut Grid<f32>,
     precipitation: &Grid<f32>,
     _seed: u64,
     params: &Params,
@@ -357,7 +361,6 @@ pub fn compute_hydrology(
 
     // Apply threshold: river_threshold is a fraction (0..1) — only the top
     // river_threshold fraction of land cells by flow are shown as rivers.
-    // E.g. 0.002 = top 0.2% of land cells.
     let mut land_flows: Vec<f32> = river_flow.data.iter().copied().filter(|&v| v > 0.0).collect();
     let threshold = if land_flows.len() > 100 {
         land_flows.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
@@ -374,5 +377,70 @@ pub fn compute_hydrology(
         }
     }
 
+    // 8. Carve valleys into the heightmap along river paths.
+    // Depth proportional to log(flow), with gentle valley widening.
+    carve_valleys(height, &river_flow, threshold);
+
     river_flow
+}
+
+/// Carve river valleys into the heightmap.
+/// Erosion depth = K * ln(1 + flow/threshold), capped, then blurred to widen valleys.
+fn carve_valleys(height: &mut Grid<f32>, river_flow: &Grid<f32>, threshold: f32) {
+    let w = height.w;
+    let h = height.h;
+    let n = w * h;
+    let threshold = threshold.max(1.0);
+
+    // Compute raw carving depth per cell
+    let mut carve = vec![0.0f32; n];
+    for i in 0..n {
+        let flow = river_flow.data[i];
+        if flow > 0.0 {
+            let depth = 25.0 * (1.0 + flow / threshold).ln();
+            carve[i] = depth.min(150.0);
+        }
+    }
+
+    // Widen valleys with separable Gaussian blur (sigma ~1.5 cells)
+    let sigma: f32 = 1.5;
+    let radius = (sigma * 3.0).ceil() as i32;
+    let kernel: Vec<f32> = (-radius..=radius)
+        .map(|d| (-(d as f32).powi(2) / (2.0 * sigma * sigma)).exp())
+        .collect();
+    let ksum: f32 = kernel.iter().sum();
+    let kernel: Vec<f32> = kernel.iter().map(|k| k / ksum).collect();
+
+    // Blur X (with E-W wrapping)
+    let mut temp = vec![0.0f32; n];
+    temp.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        for x in 0..w {
+            let mut sum = 0.0f32;
+            for (ki, dx) in (-radius..=radius).enumerate() {
+                let sx = ((x as i32 + dx) % w as i32 + w as i32) as usize % w;
+                sum += carve[y * w + sx] * kernel[ki];
+            }
+            row[x] = sum;
+        }
+    });
+
+    // Blur Y (clamp at poles)
+    let mut blurred = vec![0.0f32; n];
+    blurred.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        for x in 0..w {
+            let mut sum = 0.0f32;
+            for (ki, dy) in (-radius..=radius).enumerate() {
+                let sy = (y as i32 + dy).clamp(0, h as i32 - 1) as usize;
+                sum += temp[sy * w + x] * kernel[ki];
+            }
+            row[x] = sum;
+        }
+    });
+
+    // Apply carving: subtract from heightmap, don't go below sea level
+    for i in 0..n {
+        if blurred[i] > 0.0 && height.data[i] > 0.0 {
+            height.data[i] = (height.data[i] - blurred[i]).max(1.0);
+        }
+    }
 }

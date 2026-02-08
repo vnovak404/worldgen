@@ -165,10 +165,10 @@ pub fn generate_base(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Ve
     (map, timings)
 }
 
-/// Compute hydrology (slow: ~12s at 2048x1024). Requires height + precipitation from base map.
-pub fn generate_rivers(map: &Map, seed: u64, params: &Params) -> (Grid<f32>, Timing) {
+/// Compute hydrology (slow: ~8s at 2048x1024). Carves valleys into map.height.
+pub fn generate_rivers(map: &mut Map, seed: u64, params: &Params) -> (Grid<f32>, Timing) {
     let t = Instant::now();
-    let river_flow = hydrology::compute_hydrology(&map.height, &map.precipitation, seed, params);
+    let river_flow = hydrology::compute_hydrology(&mut map.height, &map.precipitation, seed, params);
     let timing = Timing {
         name: "hydrology",
         ms: t.elapsed().as_secs_f64() * 1000.0,
@@ -180,7 +180,7 @@ pub fn generate_rivers(map: &Map, seed: u64, params: &Params) -> (Grid<f32>, Tim
 pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Timing>) {
     let (mut map, mut timings) = generate_base(seed, w, h, params);
 
-    let (river_flow, hydro_timing) = generate_rivers(&map, seed, params);
+    let (river_flow, hydro_timing) = generate_rivers(&mut map, seed, params);
     map.river_flow = river_flow;
 
     // Recalculate total to include hydrology

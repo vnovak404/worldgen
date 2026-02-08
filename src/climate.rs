@@ -27,7 +27,7 @@ pub fn compute_temperature(height: &Grid<f32>, seed: u64) -> Grid<f32> {
 
     temp.data.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
         let lat = ((y as f32 / h as f32) - 0.5).abs() * 2.0; // 0 at equator, 1 at poles
-        let base_temp = 30.0 - 60.0 * lat.powf(1.5);
+        let base_temp = 30.0 - 60.0 * lat.powf(2.5);
         for x in 0..w {
             let elev = height.get(x, y);
             let mut t = base_temp;

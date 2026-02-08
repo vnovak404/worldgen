@@ -209,39 +209,31 @@ async fn generate_handler(
     Json(response)
 }
 
-/// Slow endpoint: computes hydrology from cached base map (~12s).
+/// Slow endpoint: computes hydrology from cached base map (~8s).
+/// Carves valleys into the cached heightmap along river paths.
 async fn rivers_handler(
     State(state): State<SharedState>,
 ) -> Json<Option<RiversResponse>> {
     let response = tokio::task::spawn_blocking(move || {
-        let cached = {
-            let guard = state.lock().unwrap();
-            // We need to borrow the map — take the whole CachedGeneration out
-            guard.as_ref().map(|c| {
-                // We need height + precipitation refs. Since Map is not Clone,
-                // we'll compute rivers while holding the lock... but that blocks
-                // other requests. Better: take ownership temporarily.
-                // Actually, let's just compute while holding the lock since
-                // rivers_handler is the only slow consumer.
-                let (river_flow, timing) = worldgen::generate_rivers(&c.map, c.seed, &c.params);
-                let layer = Layer {
-                    name: "rivers".into(),
-                    data_url: encode_png(
-                        &render::render_rivers(&c.map.height, &river_flow),
-                        c.map.w,
-                        c.map.h,
-                    ),
-                };
-                RiversResponse {
-                    layer,
-                    timing: TimingEntry {
-                        name: timing.name.to_string(),
-                        ms: timing.ms,
-                    },
-                }
-            })
-        };
-        cached
+        let mut guard = state.lock().unwrap();
+        guard.as_mut().map(|c| {
+            let (river_flow, timing) = worldgen::generate_rivers(&mut c.map, c.seed, &c.params);
+            let layer = Layer {
+                name: "rivers".into(),
+                data_url: encode_png(
+                    &render::render_rivers(&c.map.height, &river_flow),
+                    c.map.w,
+                    c.map.h,
+                ),
+            };
+            RiversResponse {
+                layer,
+                timing: TimingEntry {
+                    name: timing.name.to_string(),
+                    ms: timing.ms,
+                },
+            }
+        })
     })
     .await
     .unwrap();
