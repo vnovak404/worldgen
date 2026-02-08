@@ -33,15 +33,21 @@ pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Tim
     let mut timings = Vec::new();
     let total_start = Instant::now();
 
-    // 1. Seed microplates
+    // 1. Seed macroplates first (needed for density-guided microplate seeding)
     let t = Instant::now();
-    let seeds = plates::seed::poisson_plate_seeds(w, h, params.num_microplates, seed);
+    let macro_seeds = plates::seed::poisson_plate_seeds(
+        w, h, params.num_macroplates, seed ^ plates::properties::SALT_MACRO,
+    );
+    // 2. Seed microplates with variable density: denser near macroplate boundaries
+    let seeds = plates::seed::poisson_variable_seeds(
+        w, h, params.num_microplates, seed, &macro_seeds,
+    );
     timings.push(Timing {
         name: "plate_seed",
         ms: t.elapsed().as_secs_f64() * 1000.0,
     });
 
-    // 2. Grow microplates (noise-weighted Dijkstra)
+    // 3. Grow microplates (noise-weighted Dijkstra)
     let t = Instant::now();
     let plate_id = plates::grow::grow_plates(w, h, &seeds, seed, params.boundary_noise);
     timings.push(Timing {
@@ -49,14 +55,16 @@ pub fn generate(seed: u64, w: usize, h: usize, params: &Params) -> (Map, Vec<Tim
         ms: t.elapsed().as_secs_f64() * 1000.0,
     });
 
-    // 3. Assign plate properties (macro grouping + velocities)
+    // 4. Assign plate properties (macro grouping + velocities)
     let t = Instant::now();
     let plate_set = plates::properties::assign_plate_properties(
         params.num_microplates,
         params.num_macroplates,
         &seeds,
+        &macro_seeds,
         &plate_id,
         params.continental_fraction,
+        params.boundary_noise,
         seed,
     );
     timings.push(Timing {

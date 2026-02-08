@@ -51,28 +51,27 @@ pub fn grow_plates(
     let noise_seed = seed_u32(seed, SALT_GROW);
     let mut heap = BinaryHeap::new();
 
-    // Seed each plate at cost 0
+    // Seed each plate at cost 0 — don't claim yet, claim on pop
     for (i, s) in seeds.iter().enumerate() {
         let x = (s[0] as usize).min(w - 1);
         let y = (s[1] as usize).min(h - 1);
-        if plate_id.get(x, y) == u16::MAX {
-            plate_id.set(x, y, i as u16);
-            heap.push(Entry {
-                cost: 0.0,
-                x,
-                y,
-                pid: i as u16,
-            });
-        }
+        heap.push(Entry {
+            cost: 0.0,
+            x,
+            y,
+            pid: i as u16,
+        });
     }
 
-    // Multi-source Dijkstra: first plate to reach a cell claims it.
-    // Noise modulates step cost so boundaries wiggle organically.
+    // Multi-source Dijkstra: lowest-cost plate to reach a cell claims it.
+    // Cells are claimed on POP (not push) so the noise-weighted cost
+    // actually determines boundary placement.
     while let Some(Entry { cost, x, y, pid }) = heap.pop() {
-        // Skip stale entries (cell already claimed by a closer plate)
-        if plate_id.get(x, y) != pid {
+        // Skip if already claimed — someone got here cheaper
+        if plate_id.get(x, y) != u16::MAX {
             continue;
         }
+        plate_id.set(x, y, pid); // Claim on pop = lowest cost wins
 
         for (nx, ny) in neighbors8_wrap(x, y, w, h) {
             if plate_id.get(nx, ny) != u16::MAX {
@@ -93,7 +92,6 @@ pub fn grow_plates(
             let cost_mult = (1.0 + noise * boundary_noise).max(0.05);
 
             let new_cost = cost + step * cost_mult;
-            plate_id.set(nx, ny, pid);
             heap.push(Entry {
                 cost: new_cost,
                 x: nx,

@@ -2,7 +2,7 @@ use crate::grid::Grid;
 use crate::noise::fbm;
 use crate::rng::{Rng, seed_u32};
 
-const SALT_MACRO: u64 = 0xAC20_F1A7_E000_0001;
+pub const SALT_MACRO: u64 = 0xAC20_F1A7_E000_0001;
 const SALT_CONTINENT: u64 = 0xC017_1E17_FACE_0001;
 
 /// Properties for the hierarchical plate system.
@@ -21,23 +21,24 @@ pub fn assign_plate_properties(
     num_micro: usize,
     num_macro: usize,
     micro_seeds: &[[f32; 2]],
+    macro_seeds: &[[f32; 2]],
     plate_id: &Grid<u16>,
     continental_fraction: f32,
+    boundary_noise: f32,
     seed: u64,
 ) -> PlateSet {
     let w = plate_id.w;
     let h = plate_id.h;
     let mut rng = Rng::new(seed ^ 0xC1A5_51F0_0000_0001);
 
-    // Seed macroplate centers with wider spacing
-    let macro_seeds = crate::plates::seed::poisson_plate_seeds(
-        w, h, num_macro, seed ^ SALT_MACRO,
-    );
-
-    // Assign each microplate to nearest macroplate center
-    // Uses the microplate seed position as representative point
+    // Assign each microplate to nearest macroplate center (noise-weighted).
+    // Per-macroplate noise fields distort the Voronoi tessellation, creating
+    // organic macroplate territories instead of geometric circles.
+    let macro_noise_seed = seed_u32(seed, 0xBA0B_AB0B_CAFE_0042);
     let mut macro_id = vec![0usize; num_micro];
     for (i, ms) in micro_seeds.iter().enumerate() {
+        let u = ms[0] / w as f32;
+        let v = ms[1] / h as f32;
         let mut best_d = f32::MAX;
         let mut best_j = 0;
         for (j, mc) in macro_seeds.iter().enumerate() {
@@ -45,7 +46,10 @@ pub fn assign_plate_properties(
             let dx_raw = (ms[0] - mc[0]).abs();
             let dx = dx_raw.min(w as f32 - dx_raw);
             let dy = ms[1] - mc[1];
-            let d = dx * dx + dy * dy;
+            let base_d = dx * dx + dy * dy;
+            // Unique noise per macroplate for organic grouping
+            let n = fbm(u, v, macro_noise_seed.wrapping_add(j as u32), 3, 3.0, 2.0, 0.5);
+            let d = base_d * (1.0 + n * boundary_noise).max(0.1);
             if d < best_d {
                 best_d = d;
                 best_j = j;

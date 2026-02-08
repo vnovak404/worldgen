@@ -13,6 +13,7 @@ const SALT_COAST: u64 = 0xC0A5_7FAD_1E51_1A1D;
 const SALT_WARP: u64 = 0xDA12_BEEF_0000_CAFE;
 const SALT_INTERIOR: u64 = 0x1A7E_21A1_0001_0001;
 const SALT_CHAIN: u64 = 0xC4A1_BEEF_DEAD_0042;
+const SALT_BASE: u64 = 0xBA5E_E1EF_DEAD_CAFE;
 
 /// Build the elevation field from plate properties and boundary distance fields.
 /// Elevation is driven by geology (plate boundaries), not noise.
@@ -39,6 +40,7 @@ pub fn build_elevation(
     let warp_seed = seed_u32(seed, SALT_WARP);
     let interior_seed = seed_u32(seed, SALT_INTERIOR);
     let chain_seed = seed_u32(seed, SALT_CHAIN);
+    let base_seed = seed_u32(seed, SALT_BASE);
     let mw = params.mountain_width;
 
     // Phase 1: Compute boundary profiles per cell (parallel).
@@ -113,7 +115,6 @@ pub fn build_elevation(
             for x in 0..w {
                 let i = y * w + x;
                 let pid = plate_id.get(x, y) as usize;
-                let base = plates.base_elevation[pid];
                 let dist = dist_grid.get(x, y);
                 let is_continental = plates.is_continental[pid];
                 let profile_offset = profile_off[i];
@@ -129,6 +130,17 @@ pub fn build_elevation(
                     fbm(u * 2.0 + 17.0, v * 2.0 + 31.0, warp_seed, 3, 2.0, 2.0, 0.5) * 0.06;
                 let wu = u + warp_x;
                 let wv = v + warp_y;
+
+                // Per-pixel base elevation: noise field replaces flat per-plate value.
+                // Continental cells vary from near sea level to high plateaus,
+                // creating natural bays, lowlands, and highlands within each plate.
+                let base_center = plates.base_elevation[pid];
+                let base_noise = fbm(wu, wv, base_seed, 4, 2.5, 2.0, 0.5);
+                let base = if is_continental {
+                    base_center + base_noise * 500.0
+                } else {
+                    base_center + base_noise * 200.0
+                };
 
                 // Interior terrain variation (continental plates get more terrain)
                 let interior_noise = if is_continental {

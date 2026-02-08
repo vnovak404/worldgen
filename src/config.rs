@@ -30,7 +30,7 @@ impl Default for Params {
             num_macroplates: 8,
             num_microplates: 100,
             continental_fraction: 0.40,
-            boundary_noise: 0.6,
+            boundary_noise: 2.0,
             blur_sigma: 4.0,
             mountain_scale: 1.0,
             trench_scale: 1.0,
