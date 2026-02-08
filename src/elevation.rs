@@ -131,13 +131,15 @@ pub fn build_elevation(
                 let wu = u + warp_x;
                 let wv = v + warp_y;
 
-                // Per-pixel base elevation: noise field replaces flat per-plate value.
-                // Continental cells vary from near sea level to high plateaus,
-                // creating natural bays, lowlands, and highlands within each plate.
+                // Per-pixel base elevation: noise field + coastal taper.
+                // Continental cells taper toward sea level near plate edges,
+                // creating lowland coasts naturally. Mountain profiles (added later)
+                // still produce cliffs at convergent boundaries (fjords, Andes).
                 let base_center = plates.base_elevation[pid];
                 let base_noise = fbm(wu, wv, base_seed, 4, 2.5, 2.0, 0.5);
                 let base = if is_continental {
-                    base_center + base_noise * 500.0
+                    let taper = smoothstep((dist / shelf_width).min(1.0));
+                    (base_center + base_noise * 500.0) * taper
                 } else {
                     base_center + base_noise * 200.0
                 };

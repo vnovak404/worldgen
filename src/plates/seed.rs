@@ -63,7 +63,7 @@ pub fn poisson_variable_seeds(
         let proximity = macro_boundary_proximity(x, y, macro_centers, w);
         // Near boundaries: smaller min_dist → denser packing.
         // min_scale=0.35 means boundary plates ~8x smaller in area than interior plates.
-        let min_scale = 0.35;
+        let min_scale = 0.2;
         let local_dist = base_dist
             * (min_scale + (1.0 - min_scale) * (1.0 - proximity * proximity))
             * relax_factor;
