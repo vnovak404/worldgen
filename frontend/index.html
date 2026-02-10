@@ -258,7 +258,7 @@ button.active { background: #2a3a5a; border-color: #4a5a7a; }
       <input type="range" id="coast_amp" min="0" max="3" step="0.1" value="1.0">
       <span class="val" id="coast_amp-val">1.0</span>
     </div>
-    <div class="control-group" title="Interior terrain variation. Adds hills, plateaus, and basins inside continents. 0 = flat interiors. Higher = more rugged continental terrain.">
+    <div class="control-group" title="Interior terrain variation. Adds hills, plateaus, and highlands inside continents. 0 = flat interiors. Higher = more rugged continental terrain.">
       <label>interior</label>
       <input type="range" id="interior_amp" min="0" max="3" step="0.1" value="1.0">
       <span class="val" id="interior_amp-val">1.0</span>
@@ -273,16 +273,6 @@ button.active { background: #2a3a5a; border-color: #4a5a7a; }
       <label>shelf</label>
       <input type="range" id="shelf_width" min="5" max="100" step="5" value="50">
       <span class="val" id="shelf_width-val">50</span>
-    </div>
-    <div class="control-group" title="Mid-ocean ridge height (meters). Elevated seafloor where oceanic plates diverge. 0 = flat ocean floor. Higher = more prominent underwater ridges.">
-      <label>ridges</label>
-      <input type="range" id="ridge_height" min="0" max="3000" step="100" value="1500">
-      <span class="val" id="ridge_height-val">1500</span>
-    </div>
-    <div class="control-group" title="Continental rift valley depth (meters). Depression where continental plates pull apart. 0 = no rifts. Higher = deeper rift valleys (like the East African Rift).">
-      <label>rifts</label>
-      <input type="range" id="rift_depth" min="0" max="1500" step="50" value="600">
-      <span class="val" id="rift_depth-val">600</span>
     </div>
     <div class="separator"></div>
     <div class="control-group" title="Global precipitation multiplier. Scales all rainfall up or down. 1.0 = default. Higher = wetter world, more rivers.">

@@ -27,8 +27,6 @@
     "interior_amp",
     "detail_amp",
     "shelf_width",
-    "ridge_height",
-    "rift_depth",
     "rainfall_scale",
     "river_threshold"
   ];
@@ -182,7 +180,8 @@
       }
     }
     readSlider(id) {
-      return parseFloat(document.getElementById(id).value);
+      const el = document.getElementById(id);
+      return el ? parseFloat(el.value) : 0;
     }
     buildRequestBody() {
       const seed = parseInt(

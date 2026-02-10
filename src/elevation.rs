@@ -150,9 +150,9 @@ pub fn build_elevation(
                 let interior_noise = if is_continental {
                     let interior_weight = smoothstep((dist / interior_dist).min(1.0));
                     let terrain = fbm(wu, wv, interior_seed, 5, 4.0, 2.1, 0.5);
-                    terrain * 350.0 * interior_amp * interior_weight
+                    terrain * 1000.0 * interior_amp * interior_weight
                 } else {
-                    fbm(wu, wv, interior_seed, 3, 3.0, 2.0, 0.5) * 150.0 * interior_amp
+                    fbm(wu, wv, interior_seed, 3, 3.0, 2.0, 0.5) * 400.0 * interior_amp
                 };
 
                 // Coastline perturbation

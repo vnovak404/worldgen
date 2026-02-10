@@ -55,8 +55,6 @@ const ELEVATION_PARAMS = [
   "interior_amp",
   "detail_amp",
   "shelf_width",
-  "ridge_height",
-  "rift_depth",
   "rainfall_scale",
   "river_threshold",
 ];
@@ -242,7 +240,8 @@ class App {
   }
 
   private readSlider(id: string): number {
-    return parseFloat((document.getElementById(id) as HTMLInputElement).value);
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    return el ? parseFloat(el.value) : 0;
   }
 
   private buildRequestBody(): Record<string, number> {
