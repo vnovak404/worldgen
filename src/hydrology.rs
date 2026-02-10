@@ -5,6 +5,10 @@ use rayon::prelude::*;
 
 use crate::config::Params;
 use crate::grid::Grid;
+use crate::noise::fbm;
+use crate::rng::seed_u32;
+
+const SALT_MEANDER: u64 = 0xD1A_CAFE_0001;
 
 /// Max cells allowed for hydro grid (256M).
 const MAX_HYDRO_CELLS: usize = 256_000_000;
@@ -180,6 +184,45 @@ fn priority_flood(elev: &mut Grid<f32>) {
     }
 }
 
+/// Add noise to elevation to create river meanders.
+/// Applied BEFORE priority flood so drainage paths curve around noise features
+/// while still reaching the coast. Amplitude scales inversely with elevation
+/// (more meander on flat plains, less in mountains — matching real physics).
+fn add_meander_noise(elev: &mut Grid<f32>, seed: u64) {
+    let w = elev.w;
+    let noise_seed = seed_u32(seed, SALT_MEANDER);
+
+    elev.data.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        for x in 0..w {
+            let e = row[x];
+            if e > 0.0 {
+                // Amplitude fades with elevation: full on plains, weak in mountains.
+                // Plains (<200m): 15m noise. Mountains (>2000m): ~2m noise.
+                let amp = 15.0 / (1.0 + e / 400.0);
+
+                // Two scales of noise for natural-looking curves:
+                // Large sweeps (wavelength ~200 hi-res px ≈ 25 base px ≈ 500km)
+                let nx = x as f32 / 200.0;
+                let ny = y as f32 / 200.0;
+                let large = fbm(nx, ny, noise_seed, 3, 1.0, 2.0, 0.5);
+
+                // Smaller wiggles (wavelength ~60 hi-res px ≈ 8 base px ≈ 150km)
+                let nx2 = x as f32 / 60.0;
+                let ny2 = y as f32 / 60.0;
+                let small = fbm(nx2, ny2, noise_seed ^ 0xFF, 2, 1.0, 2.0, 0.5);
+
+                row[x] += amp * (0.7 * large + 0.3 * small);
+
+                // Clamp: don't let noise push land below sea level, or the
+                // priority flood will treat it as ocean and break drainage.
+                if row[x] < 0.5 {
+                    row[x] = 0.5;
+                }
+            }
+        }
+    });
+}
+
 /// Compute D8 flow direction for each cell (steepest descent).
 /// Returns direction as index 0-7 into the 8-neighbor offset array, or 255 for no-flow (flat/sink).
 fn compute_flow_direction(elev: &Grid<f32>) -> Grid<u8> {
@@ -236,8 +279,8 @@ fn argsort_descending(elev: &Grid<f32>) -> Vec<u32> {
     indices
 }
 
-/// Flow accumulation: traverse cells highest-to-lowest.
-/// Each cell adds its precipitation + upstream flow to its D8 downstream neighbor.
+/// Flow accumulation: traverse highest-to-lowest, each cell adds its
+/// precipitation + upstream flow to its D8 downstream neighbor.
 fn flow_accumulation(
     flow_dir: &Grid<u8>,
     hi_precip: &Grid<f32>,
@@ -253,28 +296,28 @@ fn flow_accumulation(
         (-1, 1),  (0, 1),  (1, 1),
     ];
 
-    // Initialize flow with precipitation
+    let downstream_of = |i: usize, dir: u8| -> Option<usize> {
+        if dir >= 8 { return None; }
+        let x = i % w;
+        let y = i / w;
+        let (dx, dy) = offsets[dir as usize];
+        let ny = y as i32 + dy;
+        if ny < 0 || ny >= h as i32 { return None; }
+        let ny = ny as usize;
+        let nx = ((x as i32 + dx) % w as i32 + w as i32) as usize % w;
+        Some(ny * w + nx)
+    };
+
     let mut flow = vec![0.0f32; n];
     for i in 0..n {
         flow[i] = hi_precip.data[i];
     }
 
-    // Traverse highest to lowest, push flow downstream
     for &idx in sorted {
         let i = idx as usize;
-        let dir = flow_dir.data[i];
-        if dir >= 8 { continue; } // no-flow cell
-
-        let x = i % w;
-        let y = i / w;
-        let (dx, dy) = offsets[dir as usize];
-        let ny = y as i32 + dy;
-        if ny < 0 || ny >= h as i32 { continue; }
-        let ny = ny as usize;
-        let nx = ((x as i32 + dx) % w as i32 + w as i32) as usize % w;
-        let ni = ny * w + nx;
-
-        flow[ni] += flow[i];
+        if let Some(ni) = downstream_of(i, flow_dir.data[i]) {
+            flow[ni] += flow[i];
+        }
     }
 
     flow
@@ -323,46 +366,44 @@ pub fn compute_hydrology(
     let hi_w = hi_elev.w;
     let hi_h = hi_elev.h;
 
-    // 2. Priority flood — fill depressions in-place
+    // 3. Meander noise: small-scale perturbation BEFORE priority flood.
+    add_meander_noise(&mut hi_elev, _seed);
+
+    // 4. Priority flood — fill depressions in-place
     priority_flood(&mut hi_elev);
 
-    // 3. D8 flow direction
+    // 5. D8 flow direction
     let flow_dir = compute_flow_direction(&hi_elev);
 
-    // 4. Argsort by elevation (descending) — needs hi_elev before drop
+    // 6. Argsort by elevation (descending)
     let sorted = argsort_descending(&hi_elev);
-
-    // Drop hi_elev to free memory
     drop(hi_elev);
 
-    // 5. Upscale precipitation (nearest-neighbor)
+    // 7. Upscale precipitation (nearest-neighbor)
     let hi_precip = upscale_nearest(precipitation, scale);
 
-    // 6. Flow accumulation
+    // 8. Flow accumulation
     let flow = flow_accumulation(&flow_dir, &hi_precip, &sorted);
-
-    // Drop intermediates
     drop(flow_dir);
     drop(hi_precip);
     drop(sorted);
 
-    // 7. Downsample to base resolution (max in each block)
+    // 9. Downsample to base resolution (max in each block)
     let mut river_flow = downsample_max(&flow, hi_w, hi_h, scale);
-
-    // Drop hi-res flow
     drop(flow);
 
-    // Zero out ocean cells — no rivers on water
+    // Zero out ocean cells
     for i in 0..w * h {
         if height.data[i] <= 0.0 {
             river_flow.data[i] = 0.0;
         }
     }
 
-    // Apply threshold: river_threshold is a fraction (0..1) — only the top
-    // river_threshold fraction of land cells by flow are shown as rivers.
+    // 10. Percentile threshold on raw flow (unchanged from what worked).
+    // This preserves river-to-ocean continuity since flow increases monotonically
+    // downstream — if a cell passes, every cell downstream of it also passes.
     let mut land_flows: Vec<f32> = river_flow.data.iter().copied().filter(|&v| v > 0.0).collect();
-    let threshold = if land_flows.len() > 100 {
+    let flow_threshold = if land_flows.len() > 100 {
         land_flows.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
         let idx = ((1.0 - params.river_threshold as f64) * land_flows.len() as f64) as usize;
         let idx = idx.min(land_flows.len() - 1);
@@ -371,15 +412,98 @@ pub fn compute_hydrology(
         f32::MAX
     };
 
-    for v in river_flow.data.iter_mut() {
-        if *v < threshold {
-            *v = 0.0;
+    // Save raw flow before zeroing (needed for upstream extension)
+    let raw_flow: Vec<f32> = river_flow.data.clone();
+
+    for i in 0..w * h {
+        if river_flow.data[i] < flow_threshold {
+            river_flow.data[i] = 0.0;
         }
     }
 
-    // 8. Carve valleys into the heightmap along river paths.
-    // Depth proportional to log(flow), with gentle valley widening.
-    carve_valleys(height, &river_flow, threshold);
+    // 11. Per-basin upstream extension: grow rivers into headwaters,
+    // but cap additions per river system so dry continents don't flood.
+    {
+        let offsets: [(i32, i32); 8] = [
+            (-1, -1), (0, -1), (1, -1),
+            (-1, 0),           (1, 0),
+            (-1, 1),  (0, 1),  (1, 1),
+        ];
+
+        // Label connected components of the thresholded river network.
+        let mut labels = vec![0u32; w * h];
+        let mut next_label = 1u32;
+        let mut comp_sizes: Vec<u32> = vec![0]; // index 0 unused
+        for start in 0..w * h {
+            if river_flow.data[start] <= 0.0 || labels[start] != 0 { continue; }
+            let label = next_label;
+            next_label += 1;
+            comp_sizes.push(0);
+            let mut stack = vec![start];
+            labels[start] = label;
+            while let Some(i) = stack.pop() {
+                comp_sizes[label as usize] += 1;
+                let x = i % w;
+                let y = i / w;
+                for &(dx, dy) in &offsets {
+                    let ny = y as i32 + dy;
+                    if ny < 0 || ny >= h as i32 { continue; }
+                    let ny = ny as usize;
+                    let nx = ((x as i32 + dx) % w as i32 + w as i32) as usize % w;
+                    let ni = ny * w + nx;
+                    if river_flow.data[ni] > 0.0 && labels[ni] == 0 {
+                        labels[ni] = label;
+                        stack.push(ni);
+                    }
+                }
+            }
+        }
+
+        // Each component can grow by up to 50% of its original size.
+        let mut added = vec![0u32; next_label as usize];
+        let max_add: Vec<u32> = comp_sizes.iter()
+            .map(|&s| (s as f32 * 0.5).ceil() as u32)
+            .collect();
+
+        // Must have meaningful flow to extend (not just noise-level drainage)
+        let min_extend_flow = flow_threshold * 0.05;
+
+        for _pass in 0..20 {
+            let mut changed = false;
+            for y in 0..h {
+                for x in 0..w {
+                    let i = y * w + x;
+                    if river_flow.data[i] > 0.0 { continue; } // already a river
+                    if raw_flow[i] < min_extend_flow { continue; } // too little flow
+
+                    // Find which component this cell would join
+                    let mut best_label = 0u32;
+                    for &(dx, dy) in &offsets {
+                        let ny = y as i32 + dy;
+                        if ny < 0 || ny >= h as i32 { continue; }
+                        let ny = ny as usize;
+                        let nx = ((x as i32 + dx) % w as i32 + w as i32) as usize % w;
+                        if labels[ny * w + nx] > 0 {
+                            best_label = labels[ny * w + nx];
+                            break;
+                        }
+                    }
+
+                    if best_label == 0 { continue; } // not adjacent to any river
+                    if added[best_label as usize] >= max_add[best_label as usize] { continue; } // basin cap reached
+
+                    river_flow.data[i] = raw_flow[i];
+                    labels[i] = best_label;
+                    added[best_label as usize] += 1;
+                    changed = true;
+                }
+            }
+            if !changed { break; }
+        }
+    }
+
+    // 12. Carve valleys into the heightmap along river paths.
+    carve_valleys(height, &river_flow, flow_threshold);
 
     river_flow
 }

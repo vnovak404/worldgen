@@ -264,6 +264,8 @@ fn boundary_profile(
     let ts = params.trench_scale;
     let mw = params.mountain_width * scale;
 
+    // Orogenesis boost: 1.5x base mountain heights for more mountain coverage.
+    let oro = 1.5f32;
     let strength = if is_major { 1.0 } else { 0.35 };
 
     match btype {
@@ -273,17 +275,17 @@ fn boundary_profile(
 
             match (pa_cont, pb_cont) {
                 (true, true) => {
-                    let peak = (3500.0 + rate_factor * 2000.0) * ms * strength;
+                    let peak = (3500.0 + rate_factor * 2000.0) * ms * strength * oro;
                     let offset = peak * gaussian(dist, mw);
-                    (offset, (400.0 + rate_factor * 200.0) * ms * strength)
+                    (offset, (400.0 + rate_factor * 200.0) * ms * strength * oro)
                 }
                 (true, false) | (false, true) => {
                     if plates.is_continental[current_pid] {
-                        let peak = (3000.0 + rate_factor * 1800.0) * ms * strength;
+                        let peak = (3000.0 + rate_factor * 1800.0) * ms * strength * oro;
                         let sigma = mw * 0.8;
                         let offset_dist = (dist - 30.0 * scale).max(0.0);
                         let offset = peak * gaussian(offset_dist, sigma);
-                        (offset, (300.0 + rate_factor * 150.0) * ms * strength)
+                        (offset, (300.0 + rate_factor * 150.0) * ms * strength * oro)
                     } else {
                         let trench = -2500.0 * rate_factor.min(1.5) * ts * strength;
                         let offset = trench * gaussian(dist, 12.0 * scale);
@@ -295,9 +297,9 @@ fn boundary_profile(
                         let trench = -1800.0 * rate_factor.min(1.5) * ts * strength;
                         (trench * gaussian(dist, 8.0 * scale), 0.0)
                     } else {
-                        let arc = 1000.0 * rate_factor.min(1.5) * ms * strength;
+                        let arc = 1000.0 * rate_factor.min(1.5) * ms * strength * oro;
                         let offset = arc * gaussian(dist - 35.0 * scale, 18.0 * scale);
-                        (offset, 150.0 * ms * strength)
+                        (offset, 150.0 * ms * strength * oro)
                     }
                 }
             }

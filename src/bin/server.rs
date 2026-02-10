@@ -221,7 +221,7 @@ async fn rivers_handler(
             let layer = Layer {
                 name: "rivers".into(),
                 data_url: encode_png(
-                    &render::render_rivers(&c.map.height, &river_flow),
+                    &render::render_rivers(&c.map.height, &river_flow, &c.map.precipitation, &c.map.temperature),
                     c.map.w,
                     c.map.h,
                 ),

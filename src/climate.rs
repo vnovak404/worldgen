@@ -131,6 +131,7 @@ pub fn compute_precipitation(
                 // Small convective contribution: solar heating drives local
                 // updrafts that generate rainfall from any available moisture,
                 // even deep inside continents. Scales with temperature.
+                // Convective moisture: solar heating drives updrafts in warm areas.
                 let convective = 0.3 * smoothstep(5.0, 30.0, temp_c);
                 moisture += convective;
 
@@ -155,7 +156,7 @@ pub fn compute_precipitation(
         // ITCZ: modest boost at equator (±8°)
         let itcz = 1.0 + 0.3 * (-lat_deg * lat_deg / (2.0 * 8.0 * 8.0)).exp();
 
-        // Subtropical suppression: mild dip at ~28° (desert belts)
+        // Subtropical suppression: dip at ~28° (desert belts — Sahara, Arabian, Australian)
         let sub_dist = lat_deg - 28.0;
         let subtropical = 1.0 - 0.3 * (-sub_dist * sub_dist / (2.0 * 8.0 * 8.0)).exp();
 

@@ -72,7 +72,7 @@ fn main() {
     save("precipitation.png", &precip_rgba, width, height);
 
     // 8. Rivers
-    let river_rgba = render::render_rivers(&map.height, &map.river_flow);
+    let river_rgba = render::render_rivers(&map.height, &map.river_flow, &map.precipitation, &map.temperature);
     save("rivers.png", &river_rgba, width, height);
 
     eprintln!("\nDone.");

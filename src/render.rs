@@ -267,9 +267,16 @@ const RIVER_LAND_LOW: [u8; 4] = [160, 170, 140, 255];
 const RIVER_LAND_HIGH: [u8; 4] = [190, 180, 155, 255];
 const RIVER_MTN: [u8; 4] = [210, 205, 195, 255];
 const RIVER_BLUE: [u8; 4] = [15, 40, 140, 255];
+const RIVER_DRY_HOT: [u8; 4] = [210, 160, 70, 255]; // orange for hot deserts
+const RIVER_DRY_COLD: [u8; 4] = [235, 235, 240, 255]; // white for cold deserts/tundra
 
-/// Render rivers overlaid on muted terrain.
-pub fn render_rivers(height: &Grid<f32>, river_flow: &Grid<f32>) -> Vec<u8> {
+/// Render rivers overlaid on muted terrain, with dry zones highlighted.
+pub fn render_rivers(
+    height: &Grid<f32>,
+    river_flow: &Grid<f32>,
+    precipitation: &Grid<f32>,
+    temperature: &Grid<f32>,
+) -> Vec<u8> {
     let w = height.w;
     let h = height.h;
     let mut rgba = vec![0u8; w * h * 4];
@@ -282,16 +289,28 @@ pub fn render_rivers(height: &Grid<f32>, river_flow: &Grid<f32>) -> Vec<u8> {
         for x in 0..w {
             let elev = height.get(x, y);
             let flow = river_flow.get(x, y);
+            let precip = precipitation.get(x, y);
+            let temp = temperature.get(x, y);
 
             // Light muted terrain base (high contrast against dark blue rivers)
             let base = if elev <= 0.0 {
                 RIVER_WATER
             } else {
                 let h = elev.min(5000.0);
-                if h < 500.0 {
+                let terrain = if h < 500.0 {
                     lerp_color(RIVER_LAND_LOW, RIVER_LAND_HIGH, h / 500.0)
                 } else {
                     lerp_color(RIVER_LAND_HIGH, RIVER_MTN, ((h - 500.0) / 4500.0).min(1.0))
+                };
+                // Tint dry areas: orange for hot deserts, white for cold deserts
+                if precip < 400.0 {
+                    let dry_t = 1.0 - (precip / 400.0).clamp(0.0, 1.0);
+                    // Blend between cold (white) and hot (orange) based on temperature
+                    let warm_t = ((temp - 0.0) / 20.0).clamp(0.0, 1.0); // 0=cold, 1=warm
+                    let dry_color = lerp_color(RIVER_DRY_COLD, RIVER_DRY_HOT, warm_t);
+                    lerp_color(terrain, dry_color, dry_t * 0.8)
+                } else {
+                    terrain
                 }
             };
 
